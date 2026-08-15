@@ -1,0 +1,855 @@
+/* =========================================================================
+   Long-form article typography
+   ========================================================================= */
+
+.essay {
+  max-width: var(--measure);
+  margin: 0 auto;
+}
+
+.essay__header {
+  margin-bottom: 3rem;
+}
+
+.essay__domain {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 0.9rem;
+}
+
+.essay__title {
+  font-family: var(--font-prose);
+  font-size: clamp(2.1rem, 6vw, 3.05rem);
+  line-height: 1.08;
+  letter-spacing: -0.018em;
+  font-weight: 600;
+  margin: 0 0 0.9rem;
+  text-wrap: balance;
+}
+
+.essay__subtitle {
+  font-family: var(--font-prose);
+  font-size: clamp(1.05rem, 2.6vw, 1.28rem);
+  line-height: 1.5;
+  font-style: italic;
+  color: var(--text-muted);
+  margin: 0 0 1.75rem;
+  text-wrap: pretty;
+}
+
+.essay__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-ui);
+  font-size: 0.79rem;
+  color: var(--text-faint);
+}
+
+.essay__meta strong {
+  font-weight: 550;
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------------ body */
+
+.prose {
+  font-family: var(--font-prose);
+  font-size: 1.0625rem;
+  line-height: 1.74;
+  color: var(--text);
+  hanging-punctuation: first last;
+}
+
+.prose > * + * {
+  margin-top: 1.35em;
+}
+
+.prose p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.prose strong {
+  font-weight: 650;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+/* Parts. The source marks these with a single #, so they arrive as h1 and
+   are styled as the major structural divider rather than a page title. */
+.prose h1 {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 4.5rem 0 0;
+  padding-top: 2.25rem;
+  border-top: 2px solid var(--rule-strong);
+}
+
+.prose h1:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* A thematic break immediately before a Part is redundant with the rule. */
+.prose hr:has(+ h1) {
+  display: none;
+}
+
+.prose h2 {
+  font-family: var(--font-prose);
+  font-size: 1.62rem;
+  line-height: 1.22;
+  letter-spacing: -0.012em;
+  font-weight: 600;
+  margin: 2.9rem 0 0;
+  scroll-margin-top: 4.5rem;
+  text-wrap: balance;
+}
+
+.prose h3 {
+  font-family: var(--font-prose);
+  font-size: 1.25rem;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: 2.2rem 0 0;
+  scroll-margin-top: 4.5rem;
+}
+
+.prose h4 {
+  font-family: var(--font-ui);
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  margin: 1.8rem 0 0;
+  scroll-margin-top: 4.5rem;
+}
+
+.heading-anchor {
+  margin-left: 0.4rem;
+  color: var(--text-faint);
+  text-decoration: none;
+  font-family: var(--font-ui);
+  font-weight: 400;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* Drawn here rather than in the markup so the character never leaks into
+   the extracted heading text, and from there into the sidebar. */
+.heading-anchor::after {
+  content: "#";
+}
+
+h1:hover > .heading-anchor,
+h2:hover > .heading-anchor,
+h3:hover > .heading-anchor,
+h4:hover > .heading-anchor,
+.heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+/* ----------------------------------------------------------------- lists */
+
+.prose ul,
+.prose ol {
+  margin: 1.35em 0 0;
+  padding-left: 1.5rem;
+}
+
+.prose li + li {
+  margin-top: 0.45em;
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-top: 0.45em;
+}
+
+.prose ul {
+  list-style: none;
+  padding-left: 1.25rem;
+}
+
+.prose ul > li {
+  position: relative;
+}
+
+.prose ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.95rem;
+  top: 0.72em;
+  width: 0.3rem;
+  height: 1px;
+  background: var(--rule-strong);
+}
+
+/* The glossary appendix is a definition list wearing a bullet list costume. */
+.prose ul > li > strong:first-child {
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------- quotes */
+
+.prose blockquote {
+  margin: 1.6em 0 0;
+  padding: 0.2rem 0 0.2rem 1.25rem;
+  border-left: 2px solid var(--rule-strong);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.prose blockquote p {
+  margin: 0;
+}
+
+.prose blockquote p + p {
+  margin-top: 0.9em;
+}
+
+/* ---------------------------------------------------------------- tables */
+
+.table-wrap {
+  margin: 1.9em 0 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-ui);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.table-wrap th,
+.table-wrap td {
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--rule);
+}
+
+.table-wrap thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-sunken);
+  font-weight: 620;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--rule-strong);
+  white-space: nowrap;
+}
+
+.table-wrap tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table-wrap tbody tr:hover td {
+  background: var(--bg-sunken);
+}
+
+/* Worked examples are dense with figures; align them for scanning. */
+.table-wrap td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ code */
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 0.12em 0.34em;
+  border-radius: 0.25rem;
+  background: var(--bg-sunken);
+  border: 1px solid var(--rule);
+}
+
+.prose pre {
+  margin: 1.7em 0 0;
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.prose pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+}
+
+/* Shiki dual-theme: swap the CSS variables it emits. */
+:root[data-theme="dark"] .astro-code,
+:root[data-theme="dark"] .astro-code span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .astro-code,
+  :root:not([data-theme="light"]) .astro-code span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+  }
+}
+
+/* -------------------------------------------------------------- callouts */
+
+.callout {
+  margin: 1.9em 0 0;
+  padding: 1.1rem 1.25rem;
+  border-left: 3px solid var(--rule-strong);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--bg-sunken);
+  font-size: 0.99rem;
+}
+
+.callout > * {
+  margin: 0;
+}
+
+.callout > * + * {
+  margin-top: 0.85em;
+}
+
+.callout::before {
+  content: attr(data-title);
+  display: block;
+  margin-bottom: 0.55rem;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 680;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.callout--key {
+  border-left-color: var(--callout-key-edge);
+  background: var(--callout-key-wash);
+  font-size: 1.06rem;
+  line-height: 1.62;
+}
+
+.callout--key::before {
+  color: var(--callout-key-edge);
+}
+
+.callout--note {
+  border-left-color: var(--callout-note-edge);
+  background: var(--callout-note-wash);
+}
+
+.callout--note::before {
+  color: var(--callout-note-edge);
+}
+
+.callout--caution {
+  border-left-color: var(--callout-caution-edge);
+  background: var(--callout-caution-wash);
+}
+
+.callout--caution::before {
+  color: var(--callout-caution-edge);
+}
+
+.callout--objection {
+  border-left-color: var(--callout-objection-edge);
+  background: var(--callout-objection-wash);
+}
+
+.callout--objection::before {
+  color: var(--callout-objection-edge);
+}
+
+.callout--history {
+  border-left-color: var(--callout-history-edge);
+  background: var(--callout-history-wash);
+}
+
+.callout--history::before {
+  color: var(--callout-history-edge);
+}
+
+.callout--aside,
+.callout--vocabulary {
+  font-size: 0.94rem;
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------------- diagrams */
+
+.diagram {
+  margin: 2.1em 0 0;
+  padding: 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow-x: auto;
+  text-align: center;
+}
+
+.diagram pre.mermaid {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  /* Hidden until Mermaid replaces the source text with SVG. */
+  visibility: hidden;
+}
+
+.diagram pre.mermaid[data-processed="true"] {
+  visibility: visible;
+}
+
+.diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram figcaption {
+  margin-top: 0.9rem;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+
+/* ------------------------------------------------------------- live demos */
+
+.demo {
+  margin: 2.2em 0 0;
+  padding: 1.1rem 1.2rem 1.3rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+}
+
+.demo__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.demo__label {
+  font-size: 0.66rem;
+  font-weight: 680;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.demo__buttons {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.demo button {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.demo button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.demo__canvas {
+  display: block;
+  width: 100%;
+  height: 190px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.demo__readouts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin-top: 0.9rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.demo__readouts div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.demo__readouts span {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.demo__readouts strong {
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.demo__controls {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.demo__controls label {
+  display: grid;
+  grid-template-columns: 9.5rem 1fr 3.2rem;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.demo__controls label > span:first-child {
+  color: var(--text-muted);
+}
+
+.demo__controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.demo__controls output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.demo__segmented {
+  display: flex;
+  gap: 0.3rem;
+  grid-column: 2 / -1;
+}
+
+.demo__segmented button[data-active="true"] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.demo__note {
+  margin: 1rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------- logic chain */
+
+.chain {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+}
+
+.chain__status {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.chain__status p {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  border-left: 2px solid var(--rule-strong);
+}
+
+.chain__status p:last-child {
+  border-left-color: var(--accent);
+}
+
+.chain__status span {
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.chain__status strong {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.chain__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.chain__row {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(9rem, 1fr) minmax(0, 1.35fr);
+  align-items: start;
+  gap: 0.5rem 0.85rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.chain__row[data-state="idle"] {
+  opacity: 0.42;
+}
+
+.chain__row[data-state="done"] {
+  opacity: 1;
+}
+
+.chain__row[data-state="next"] {
+  border-color: var(--accent);
+  border-style: dashed;
+  opacity: 1;
+}
+
+.chain__row[data-just="true"] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.chain__index {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg-sunken);
+  border: 1px solid var(--rule-strong);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.chain__row[data-just="true"] .chain__index {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+
+.chain__body p {
+  margin: 0;
+}
+
+.chain__name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.chain__blurb {
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+.chain__maths {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.chain__equation {
+  font-size: 0.9rem;
+}
+
+.chain__values {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--accent);
+  min-height: 1em;
+  white-space: nowrap;
+}
+
+.chain__row[data-state="idle"] .chain__values {
+  color: var(--text-faint);
+}
+
+@media (max-width: 40rem) {
+  .chain__status {
+    grid-template-columns: 1fr;
+  }
+
+  .chain__row {
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+  }
+
+  .chain__maths {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (max-width: 34rem) {
+  .demo__controls label {
+    grid-template-columns: 1fr 3rem;
+  }
+  .demo__controls label > span:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ------------------------------------------------------------------ math */
+
+.prose .katex {
+  font-size: 1.03em;
+}
+
+.prose .katex-display {
+  margin: 1.7em 0 0;
+  padding: 0.35rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ------------------------------------------------------------- footnotes */
+
+.prose .footnotes {
+  margin-top: 3.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+.prose .footnotes h2 {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 0.75rem;
+}
+
+.prose sup a {
+  text-decoration: none;
+  font-size: 0.78em;
+  padding: 0 0.1em;
+}
+
+/* ------------------------------------------------------- glossary terms */
+
+.gloss {
+  position: relative;
+  border-bottom: 1px dotted var(--text-faint);
+  cursor: help;
+}
+
+.gloss::after {
+  content: attr(data-def);
+  position: absolute;
+  bottom: calc(100% + 0.55rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: max-content;
+  max-width: min(26rem, 74vw);
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease, visibility 120ms;
+}
+
+.gloss:hover::after,
+.gloss:focus-visible::after,
+.gloss[data-open="true"]::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* --------------------------------------------------------- cross-links */
+
+.wikilink {
+  text-decoration-style: dotted;
+}
+
+.wikilink[data-dangling="true"] {
+  color: var(--text-muted);
+  text-decoration-style: dashed;
+  cursor: not-allowed;
+}
+
+/* ----------------------------------------------------------- separators */
+
+.prose hr {
+  margin: 2.6em 0 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* -------------------------------------------------------------- footer */
+
+.essay__footer {
+  max-width: var(--measure);
+  margin: 5rem auto 0;
+  padding-top: 2rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.essay__footer h2 {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 0.75rem;
+}

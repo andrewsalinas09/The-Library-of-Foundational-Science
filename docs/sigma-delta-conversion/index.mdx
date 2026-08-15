@@ -1,12 +1,37 @@
-# Precision from Nothing: How a Communications Pin, Two Resistors, and a Capacitor Replace a Precision Instrument
-
-## A complete explanation of the sigma-delta ADC hiding inside the QuadRF, built from first principles, assuming no electronics knowledge whatsoever
-
 ---
+uid: qr8n3v52
+title: Precision from Nothing
+subtitle: How a communications pin, two resistors, and a capacitor replace a precision instrument
+domain: electronics / data conversion
+assumes: nothing
+mechanisms:
+  - delta-sigma-modulation
+  - decimation-filtering
+ideas:
+  - oversampling
+  - noise-shaping
+  - quantization-as-noise
+  - dither
+  - root-n-averaging
+  - feedback-integrator
+  - precision-from-history
+  - comparison-vs-absolute
+  - precision-in-procedure-not-instrument
+analogy: >-
+  Weighing a fish on a balance scale that reports only which pan is heavier,
+  one metronome tick at a time.
+claim: >-
+  A one-cent capacitor, two resistors, and an idle communications pin deliver
+  twelve-bit conversion with zero converter chips on the board.
+status: published
+created: 2026-08-14
+---
+
+import SigmaDeltaSimulator from "@demos/SigmaDeltaSimulator.astro";
 
 ## Preface: the claim we are going to earn
 
-Inside a $499 phased-array radio called the QuadRF, there is a place on the circuit board where a smooth, wiggling analog voltage carrying radio information needs to be turned into a stream of numbers a computer can process. The standard way to do this is to buy a chip called an analog-to-digital converter. A good one, fast enough and accurate enough for radio work, costs several dollars, and this product needs sixteen of them. That is a meaningful slice of the entire budget.
+Inside a \$499 phased-array radio called the QuadRF, there is a place on the circuit board where a smooth, wiggling analog voltage carrying radio information needs to be turned into a stream of numbers a computer can process. The standard way to do this is to buy a chip called an analog-to-digital converter. A good one, fast enough and accurate enough for radio work, costs several dollars, and this product needs sixteen of them. That is a meaningful slice of the entire budget.
 
 The QuadRF's designers did not buy those chips. Instead, at each of those sixteen places, the schematic shows a resistor, a second resistor, a capacitor worth about one cent, and a wire running into a pin on a logic chip, a pin that was designed for receiving digital communications and was never intended to measure anything. Out of that pin, through pure mathematics running inside the chip, comes a precision measurement, updated tens of millions of times per second, with quality comparable to the dedicated chip they didn't buy.
 
@@ -48,7 +73,7 @@ Every material resists the flow of charge to some degree. Copper resists very li
 
 The relationship between the three quantities is the single most used equation in electronics, Ohm's law:
 
-**current = voltage ÷ resistance**, or I = V/R.
+**current = voltage ÷ resistance**, or $I = V/R$.
 
 Resistance is measured in ohms (Ω). Push 1 volt across a 1,000-ohm resistor and exactly 1 milliamp flows. Double the voltage, double the flow. Double the resistance, halve the flow. That is essentially everything a resistor does, and it is enough: a resistor converts a voltage difference into a proportional, predictable current. Remember that phrasing. In the circuit we are building toward, resistors are used precisely as *voltage-to-current converters*, devices that translate "how much pressure" into "how much flow."
 
@@ -62,7 +87,7 @@ A **capacitor** is two flat metal plates placed very close together but not touc
 
 The accumulated charge creates a voltage across the capacitor, and the relationship is beautifully simple: the voltage is proportional to the stored charge. The proportionality constant is called capacitance, measured in farads:
 
-**voltage across capacitor = stored charge ÷ capacitance**, or V = Q/C.
+**voltage across capacitor = stored charge ÷ capacitance**, or $V = Q/C$.
 
 The intuition to carry: **a capacitor is a bucket for charge, and the voltage across it is the water level in the bucket.** Pour current in, the level rises. Draw current out, the level falls. Stop all flow, and the level *holds*: the capacitor remembers.
 
@@ -90,7 +115,7 @@ This conversion is called analog-to-digital conversion, and the device that perf
 
 **Sampling** answers *when* to measure. Instead of the whole continuous curve, keep only its value at regular instants: tick, tick, tick, millions of times per second. A deep theorem (the Nyquist-Shannon sampling theorem) makes this respectable: if you sample at least twice as fast as the fastest wiggle in the signal, the samples contain *everything*; the smooth curve can be perfectly rebuilt from them, with no information lost whatsoever. Intuition: a wiggle can't hide between your samples unless it completes its up-and-down faster than two of your ticks. Our signal wiggles at up to 20 MHz, so any sampling rate comfortably above 40 million samples per second captures it fully. Remember this threshold; the trick we are building will sample not just above it but *hundreds of times* above it, and that extravagance is precisely where the magic comes from.
 
-**Quantization** answers *how finely* to measure. Each sampled voltage must be rounded to the nearest value on a finite menu. The menu size is described in bits: an 8-bit ADC has 2⁸ = 256 menu levels; a 12-bit ADC has 4,096; a 16-bit ADC has 65,536. More bits, finer rounding, more faithful numbers. The rounding error, the small difference between the true smooth value and the nearest menu step, is called **quantization error**, and it behaves like a small amount of added noise, a fine gravel of inaccuracy sprinkled over the measurement. Keep this concept warm; the entire cleverness ahead consists of doing something unreasonable-sounding to this error.
+**Quantization** answers *how finely* to measure. Each sampled voltage must be rounded to the nearest value on a finite menu. The menu size is described in bits: an 8-bit ADC has $2^{8}$ = 256 menu levels; a 12-bit ADC has 4,096; a 16-bit ADC has 65,536. More bits, finer rounding, more faithful numbers. The rounding error, the small difference between the true smooth value and the nearest menu step, is called **quantization error**, and it behaves like a small amount of added noise, a fine gravel of inaccuracy sprinkled over the measurement. Keep this concept warm; the entire cleverness ahead consists of doing something unreasonable-sounding to this error.
 
 ## 8. Why fine measurement is expensive
 
@@ -174,7 +199,7 @@ Now trace one clock tick around the loop, about 10 nanoseconds of real time:
 
 The signal, via resistor one, pours a small current into the bucket; the pour rate is proportional to the signal's voltage right now (Ohm's law: the resistor converts voltage to flow). Simultaneously, the feedback pin, via resistor two, either pours in or draws out a fixed-size current, depending on the last decision. The bucket integrates the difference: its level drifts up or down according to whether the signal's pour currently exceeds the feedback's counter-pour. At the clock edge, the comparator samples the level: above the midpoint or below? That single bit is latched into the FPGA's logic (one more entry in the move record) and simultaneously flipped and sent back out the feedback pin, setting the counter-pour for the next tick. Repeat, forever, at tens or hundreds of millions of ticks per second.
 
-The contraption has a name: a **first-order delta-sigma modulator** (equivalently sigma-delta; both orders of the words are used). The name is honest Greek bookkeeping: *delta* (Δ) means difference, the signal-minus-feedback discrepancy that flows into the bucket each tick; *sigma* (Σ) means sum, the accumulation the bucket performs. Difference, then sum, then one-bit decision, then feed the decision back: that is the entire machine. "First-order" means there is one bucket in the loop; fancier versions chain several, a refinement noted later.
+The contraption has a name: a **first-order delta-sigma modulator** (equivalently sigma-delta; both orders of the words are used). The name is honest Greek bookkeeping: *delta* ($\Delta$) means difference, the signal-minus-feedback discrepancy that flows into the bucket each tick; *sigma* ($\Sigma$) means sum, the accumulation the bucket performs. Difference, then sum, then one-bit decision, then feed the decision back: that is the entire machine. "First-order" means there is one bucket in the loop; fancier versions chain several, a refinement noted later.
 
 ## 14. Watching it run: a worked example with actual numbers
 
@@ -200,6 +225,10 @@ Hold the signal steady at +0.6 and run twelve ticks:
 Look at the output column: 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0... After the one-tick opening stumble, the machine locks into a repeating pattern of four 1s and one 0. Convert to the ±1 scale and average any five-tick window: (4×(+1) + 1×(−1))/5 = 3/5 = **0.6**. The input, exactly, encoded in the *density* of the bitstream. Change the input to +0.6003 and the pattern would no longer repeat every five; a lone extra 0 would appear roughly every 1,666 ticks, and a long enough average would read 0.6003. Every refinement of the input value shows up as a rearrangement of the rhythm, and averaging recovers it. The bucket, meanwhile, never settles and never escapes: it is forever being disturbed by the signal and herded back by the feedback, and its perpetual small agitation is precisely what keeps every comparator answer informative.
 
 One vocabulary note: a stream like this, where the *density of pulses* carries the value, is called pulse-density modulation (PDM). You have met its output before without the name: MEMS microphones in phones emit exactly such streams, and Super Audio CD stored music this way.
+
+The table above is twelve ticks of exactly this arithmetic, frozen. Here it is running. Drag the input and watch the loop re-balance: the bucket never settles, the comparator keeps flipping, and the density of ones tracks a value no single comparison could ever have reported.
+
+<SigmaDeltaSimulator />
 
 ## 15. Where the crudeness went: noise shaping, the deep idea
 
@@ -282,4 +311,21 @@ That is the full circle back to the opening claim, now earned. A pin built to an
 
 ---
 
-*Appendix: the vocabulary, in one place.* **Voltage**: electrical pressure between two points. **Current**: flow rate of charge. **Resistor**: calibrated bottleneck; converts voltage to proportional current (Ohm's law, I = V/R). **Capacitor**: charge bucket; its voltage is the running total of all past current, hence an integrator and a memory. **Signal**: a voltage varying in time, carrying information. **Sampling**: measuring at regular ticks; lossless if faster than twice the signal's fastest wiggle (Nyquist). **Quantization**: rounding each measurement to a finite menu; the rounding error behaves as noise. **ADC/DAC**: converters between smooth voltages and numbers. **Comparator**: one-bit instrument answering "is A above B?" **LVDS**: two-wire digital signaling in which the bit is which wire is higher; every LVDS receiver is therefore a fast comparator. **FPGA**: a chip of reconfigurable logic, programmed by a bitstream file. **Delta-sigma modulator**: feedback loop of difference (Δ), accumulation (Σ), one-bit decision, and correction, emitting a pulse-density bitstream. **Noise shaping**: the loop's forcing of quantization error into high frequencies, away from the signal. **Oversampling**: clocking the loop far faster than the signal requires, the raw material of the exchange. **Decimation**: the arithmetic averaging that mints many-bit numbers from the one-bit torrent. **Jitter**: timing wobble in the clock, the one imprecision this architecture cannot forgive, because time is where all the precision was hidden.
+# Appendix: Glossary
+
+- **Voltage**: electrical pressure between two points.
+- **Current**: flow rate of charge.
+- **Resistor**: calibrated bottleneck; converts voltage to proportional current (Ohm's law, $I = V/R$).
+- **Capacitor**: charge bucket; its voltage is the running total of all past current, hence an integrator and a memory.
+- **Signal**: a voltage varying in time, carrying information.
+- **Sampling**: measuring at regular ticks; lossless if faster than twice the signal's fastest wiggle (Nyquist).
+- **Quantization**: rounding each measurement to a finite menu; the rounding error behaves as noise.
+- **ADC/DAC**: converters between smooth voltages and numbers.
+- **Comparator**: one-bit instrument answering "is A above B?".
+- **LVDS**: two-wire digital signaling in which the bit is which wire is higher; every LVDS receiver is therefore a fast comparator.
+- **FPGA**: a chip of reconfigurable logic, programmed by a bitstream file.
+- **Delta-sigma modulator**: feedback loop of difference ($\Delta$), accumulation ($\Sigma$), one-bit decision, and correction, emitting a pulse-density bitstream.
+- **Noise shaping**: the loop's forcing of quantization error into high frequencies, away from the signal.
+- **Oversampling**: clocking the loop far faster than the signal requires, the raw material of the exchange.
+- **Decimation**: the arithmetic averaging that mints many-bit numbers from the one-bit torrent.
+- **Jitter**: timing wobble in the clock, the one imprecision this architecture cannot forgive, because time is where all the precision was hidden.

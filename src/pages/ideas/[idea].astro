@@ -1,0 +1,48 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import { registry } from "../../lib/registry";
+
+export async function getStaticPaths() {
+  const docs = await getCollection("docs", ({ data }) => !data.draft);
+  const used = new Set(docs.flatMap((doc) => doc.data.ideas));
+
+  return [...used].map((idea) => ({
+    params: { idea },
+    props: {
+      idea,
+      definition: registry.ideas?.[idea] ?? "",
+      docs: docs.filter((doc) => doc.data.ideas.includes(idea)),
+    },
+  }));
+}
+
+const { idea, definition, docs } = Astro.props;
+const label = idea.replace(/-/g, " ");
+---
+
+<Base title={`${label} — The Library of Foundational Science`} description={definition}>
+  <div class="home">
+    <header class="home__header">
+      <p class="card__domain">Recurring idea</p>
+      <h1 class="home__title">{label}</h1>
+      {definition && <p class="home__lede">{definition}</p>}
+    </header>
+
+    <p class="toc__label">
+      {docs.length} {docs.length === 1 ? "document leans" : "documents lean"} on this
+    </p>
+
+    <ul class="card-list">
+      {docs.map((doc) => (
+        <li class="card">
+          <p class="card__domain">{doc.data.domain}</p>
+          <h2 class="card__title"><a href={`/${doc.id}/`}>{doc.data.title}</a></h2>
+          <p class="card__subtitle">{doc.data.subtitle}</p>
+        </li>
+      ))}
+    </ul>
+
+    <p><a href="/">Back to the library</a></p>
+  </div>
+</Base>

@@ -1,0 +1,33 @@
+---
+import type { TocGroup } from "../lib/toc";
+
+interface Props {
+  groups: TocGroup[];
+}
+
+const { groups } = Astro.props;
+---
+
+<nav class="toc" aria-label="Table of contents">
+  <p class="toc__label">Contents</p>
+
+  {groups.map((group) => (
+    <div class="toc__group">
+      {group.title && (
+        <p class="toc__group-title">
+          {group.slug ? <a href={`#${group.slug}`}>{group.title}</a> : group.title}
+        </p>
+      )}
+      <ul class="toc__list">
+        {group.sections.map((section) => (
+          <li>
+            <a class="toc__link" href={`#${section.slug}`}>
+              {section.number && <span class="toc__num">{section.number}</span>}
+              <span>{section.text}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ))}
+</nav>

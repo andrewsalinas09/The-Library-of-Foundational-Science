@@ -1,0 +1,92 @@
+---
+import { getCollection } from "astro:content";
+import Search from "astro-pagefind/components/Search";
+import Base from "../layouts/Base.astro";
+
+const docs = (await getCollection("docs", ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.created.getTime() - a.data.created.getTime(),
+);
+
+// Ideas ranked by how many documents lean on them. The recurring ones are
+// the library's actual spine.
+const ideaCounts = new Map<string, number>();
+for (const doc of docs) {
+  for (const idea of doc.data.ideas) {
+    ideaCounts.set(idea, (ideaCounts.get(idea) ?? 0) + 1);
+  }
+}
+const recurring = [...ideaCounts.entries()]
+  .filter(([, count]) => count > 1)
+  .sort((a, b) => b[1] - a[1]);
+---
+
+<Base
+  title="The Library of Foundational Science"
+  description="Long-form explanations built from zero."
+>
+  <div class="home">
+    <header class="home__header">
+      <h1 class="home__title">The Library of Foundational Science</h1>
+      <p class="home__lede">
+        Long-form explanations built literally from zero. Each document names a
+        surprising claim up front, constructs every concept it depends on, runs
+        the mechanism with real numbers you can check by hand, and then shows
+        where the same idea turns up in fields that look nothing alike.
+      </p>
+    </header>
+
+    <section class="search-panel">
+      <Search
+        id="search"
+        className="pagefind-ui"
+        uiOptions={{
+          showImages: false,
+          showSubResults: true,
+          excerptLength: 28,
+          resetStyles: false,
+        }}
+      />
+      <p class="search-panel__hint">
+        Full-text across every document. Built at compile time, so it works on
+        any static host with no server behind it.
+      </p>
+    </section>
+
+    {recurring.length > 0 && (
+      <section style="margin-bottom:3rem">
+        <p class="toc__label">Ideas that recur across the library</p>
+        <div class="tag-row">
+          {recurring.map(([idea, count]) => (
+            <a class="tag" href={`/ideas/${idea}/`}>
+              {idea.replace(/-/g, " ")}
+              <span style="color:var(--text-faint)"> · {count}</span>
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <ul class="card-list">
+      {docs.map((doc) => (
+        <li class="card">
+          <p class="card__domain">{doc.data.domain}</p>
+          <h2 class="card__title"><a href={`/${doc.id}/`}>{doc.data.title}</a></h2>
+          <p class="card__subtitle">{doc.data.subtitle}</p>
+          {doc.data.claim && <p class="card__claim">{doc.data.claim}</p>}
+          <div class="card__meta">
+            <span>assumes {doc.data.assumes}</span>
+            {doc.data.analogy && <span>via {doc.data.analogy.split(",")[0]}</span>}
+          </div>
+          <div class="tag-row">
+            {doc.data.ideas.slice(0, 5).map((idea) => (
+              <span class="tag">{idea.replace(/-/g, " ")}</span>
+            ))}
+            {doc.data.ideas.length > 5 && (
+              <span class="tag">+{doc.data.ideas.length - 5}</span>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+</Base>

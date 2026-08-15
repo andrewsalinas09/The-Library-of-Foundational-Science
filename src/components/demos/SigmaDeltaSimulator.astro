@@ -1,0 +1,475 @@
+---
+import katex from "katex";
+
+/**
+ * A live first-order delta-sigma modulator, steppable one logic stage at a time.
+ *
+ * The point of the demo is not the waveform, it is the reasoning chain: read
+ * what the loop is about to do, predict the number, click, and check yourself.
+ * So every stage shows its equation and, once it has run, that equation with
+ * the current values substituted in.
+ *
+ * The symbolic half of each row is fixed text, so it is typeset with KaTeX
+ * here at build time and ships as plain HTML. Only the numeric substitution is
+ * generated at runtime, which keeps KaTeX's JavaScript off the page entirely.
+ *
+ * `is:inline` is required: Astro does not hoist bundled component scripts
+ * through content-collection MDX, so a normal <script> is silently dropped and
+ * the demo renders but never runs. The cost is plain JS instead of TypeScript.
+ */
+
+const tex = (source: string) =>
+  katex.renderToString(source, { throwOnError: false, output: "html" });
+
+const STAGES = [
+  {
+    name: "Compare",
+    blurb: "The comparator's only question.",
+    equation: tex("d_k = [\\, b_k > 0 \\,]"),
+  },
+  {
+    name: "Feed back",
+    blurb: "The emitted bit becomes a full-scale push, one of exactly two levels.",
+    equation: tex("f_k = 2 d_k - 1"),
+  },
+  {
+    name: "Difference  (Δ)",
+    blurb: "How far the feedback overshot the input.",
+    equation: tex("e_k = x - f_k"),
+  },
+  {
+    name: "Accumulate  (Σ)",
+    blurb: "The bucket remembers the debt.",
+    equation: tex("b_{k+1} = b_k + k\\, e_k"),
+  },
+  {
+    name: "Emit",
+    blurb: "The bit joins the record; density over a window is the measurement.",
+    equation: tex("\\hat{x} = \\frac{2}{W}\\sum_{i=1}^{W} d_i - 1"),
+  },
+];
+---
+
+<div class="demo" data-demo="sigma-delta">
+  <div class="demo__head">
+    <span class="demo__label">Live modulator</span>
+    <div class="demo__buttons">
+      <button type="button" data-action="stage">Next step</button>
+      <button type="button" data-action="tick">Finish tick</button>
+      <button type="button" data-action="toggle">Run</button>
+      <button type="button" data-action="reset">Reset</button>
+    </div>
+  </div>
+
+  <canvas class="demo__canvas" data-role="canvas"></canvas>
+
+  <div class="demo__readouts">
+    <div><span>Tick</span><strong data-out="tick">0</strong></div>
+    <div><span>Input x</span><strong data-out="input">0.600</strong></div>
+    <div><span>Recovered x̂</span><strong data-out="average">0.000</strong></div>
+    <div><span>Bucket b</span><strong data-out="bucket">0.000</strong></div>
+  </div>
+
+  <div class="chain">
+    <div class="chain__status">
+      <p><span>Just done</span><strong data-out="just">nothing yet</strong></p>
+      <p><span>Next</span><strong data-out="next">1. Compare</strong></p>
+    </div>
+
+    <ol class="chain__list">
+      {STAGES.map((stage, index) => (
+        <li class="chain__row" data-stage={index} data-state="idle">
+          <span class="chain__index">{index + 1}</span>
+          <div class="chain__body">
+            <p class="chain__name">{stage.name}</p>
+            <p class="chain__blurb">{stage.blurb}</p>
+          </div>
+          <div class="chain__maths">
+            <span class="chain__equation" set:html={stage.equation} />
+            <span class="chain__values" data-values={index}>&nbsp;</span>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </div>
+
+  <div class="demo__controls">
+    <label>
+      <span>Input voltage x</span>
+      <input type="range" data-control="input" min="-0.95" max="0.95" step="0.001" value="0.6" />
+      <output data-out="input-value">0.600</output>
+    </label>
+
+    <label>
+      <span>Loop gain k</span>
+      <input type="range" data-control="gain" min="0.05" max="0.6" step="0.01" value="0.25" />
+      <output data-out="gain-value">0.25</output>
+    </label>
+
+    <label>
+      <span>Ticks per frame</span>
+      <input type="range" data-control="speed" min="1" max="40" step="1" value="4" />
+      <output data-out="speed-value">4</output>
+    </label>
+
+    <label>
+      <span>Window W</span>
+      <span class="demo__segmented" data-control="window">
+        <button type="button" data-window="16">16</button>
+        <button type="button" data-window="64">64</button>
+        <button type="button" data-window="256" data-active="true">256</button>
+        <button type="button" data-window="1024">1024</button>
+      </span>
+    </label>
+  </div>
+
+  <p class="demo__note">
+    Step through one tick and watch where the crudeness goes. The comparator is
+    wrong by a lot on every single tick, yet the bucket records each error and
+    the very next decision is pushed the other way. Widen W and the recovered
+    value sharpens, because the precision is not in any single answer. It is in
+    the record.
+  </p>
+</div>
+
+<script is:inline>
+  (function () {
+    var HISTORY = 320;
+    var MAX_BITS = 4096;
+    var STAGE_NAMES = ["Compare", "Feed back", "Difference", "Accumulate", "Emit"];
+
+    function fmt(value, places) {
+      var text = Math.abs(value).toFixed(places === undefined ? 3 : places);
+      return (value < 0 ? "−" : "") + text;
+    }
+
+    function setup(root) {
+      var canvas = root.querySelector('[data-role="canvas"]');
+      if (!canvas) return;
+
+      function out(name) {
+        return root.querySelector('[data-out="' + name + '"]');
+      }
+      function control(name) {
+        return root.querySelector('[data-control="' + name + '"]');
+      }
+      function value(name, fallback) {
+        var el = control(name);
+        return el ? Number(el.value) : fallback;
+      }
+      function write(name, text) {
+        var el = out(name);
+        if (el) el.textContent = text;
+      }
+
+      var rows = root.querySelectorAll(".chain__row");
+      var valueSlots = root.querySelectorAll("[data-values]");
+
+      var state = {
+        bucket: 0,
+        bits: [],
+        trace: [],
+        tick: 0,
+        stage: 0,
+        pending: { bit: null, feedback: null, error: null, nextBucket: null },
+        estimate: 0,
+      };
+      var running = false;
+      var windowSize = 256;
+      var lastDone = -1;
+
+      function reset() {
+        state.bucket = 0;
+        state.bits.length = 0;
+        state.trace.length = 0;
+        state.tick = 0;
+        state.stage = 0;
+        state.pending = { bit: null, feedback: null, error: null, nextBucket: null };
+        state.estimate = 0;
+        lastDone = -1;
+        renderChain();
+      }
+
+      function estimate() {
+        var tail = state.bits.slice(-windowSize);
+        if (!tail.length) return 0;
+        var ones = 0;
+        for (var i = 0; i < tail.length; i++) ones += tail[i];
+        return (2 * ones) / tail.length - 1;
+      }
+
+      /** Execute exactly one stage of the loop. */
+      function advance() {
+        var x = value("input", 0.6);
+        var k = value("gain", 0.25);
+        var p = state.pending;
+
+        switch (state.stage) {
+          case 0:
+            p.bit = state.bucket > 0 ? 1 : 0;
+            break;
+          case 1:
+            p.feedback = p.bit === 1 ? 1 : -1;
+            break;
+          case 2:
+            p.error = x - p.feedback;
+            break;
+          case 3:
+            p.nextBucket = state.bucket + k * p.error;
+            break;
+          case 4:
+            state.bits.push(p.bit);
+            state.bucket = p.nextBucket;
+            state.trace.push(state.bucket);
+            state.tick += 1;
+            state.estimate = estimate();
+            if (state.bits.length > MAX_BITS) {
+              state.bits.splice(0, state.bits.length - MAX_BITS);
+            }
+            if (state.trace.length > HISTORY) {
+              state.trace.splice(0, state.trace.length - HISTORY);
+            }
+            break;
+        }
+
+        lastDone = state.stage;
+        state.stage = (state.stage + 1) % 5;
+      }
+
+      /** Run stages until the current tick commits. */
+      function finishTick() {
+        var guard = 0;
+        do {
+          advance();
+          guard++;
+        } while (state.stage !== 0 && guard < 10);
+      }
+
+      function substitution(index) {
+        var x = value("input", 0.6);
+        var k = value("gain", 0.25);
+        var p = state.pending;
+        var bucketBefore =
+          p.nextBucket !== null && state.stage === 0 ? state.trace[state.trace.length - 1] : state.bucket;
+
+        switch (index) {
+          case 0:
+            if (p.bit === null) return "";
+            return fmt(state.bucket) + " > 0  →  d = " + p.bit;
+          case 1:
+            if (p.feedback === null) return "";
+            return "d = " + p.bit + "  →  f = " + (p.feedback > 0 ? "+1" : "−1");
+          case 2:
+            if (p.error === null) return "";
+            return (
+              "e = " + fmt(x) + " − (" + (p.feedback > 0 ? "+1" : "−1") + ") = " + fmt(p.error)
+            );
+          case 3:
+            if (p.nextBucket === null) return "";
+            return (
+              "b ← " +
+              fmt(state.bucket) +
+              " + " +
+              k.toFixed(2) +
+              "×(" +
+              fmt(p.error) +
+              ") = " +
+              fmt(p.nextBucket)
+            );
+          case 4:
+            if (!state.bits.length) return "";
+            return (
+              "bit " +
+              state.bits[state.bits.length - 1] +
+              " appended · W=" +
+              windowSize +
+              "  →  x̂ = " +
+              fmt(state.estimate)
+            );
+        }
+        return "";
+      }
+
+      function renderChain() {
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          var stateName = "idle";
+          if (running) stateName = "done";
+          else if (i < state.stage) stateName = "done";
+          else if (i === state.stage) stateName = "next";
+          row.setAttribute("data-state", stateName);
+          if (!running && i === lastDone) row.setAttribute("data-just", "true");
+          else row.removeAttribute("data-just");
+        }
+
+        for (var j = 0; j < valueSlots.length; j++) {
+          var text = substitution(j);
+          valueSlots[j].textContent = text || " ";
+        }
+
+        write(
+          "just",
+          lastDone < 0 ? "nothing yet" : lastDone + 1 + ". " + STAGE_NAMES[lastDone]
+        );
+        write("next", state.stage + 1 + ". " + STAGE_NAMES[state.stage]);
+        write("tick", String(state.tick));
+        write("bucket", fmt(state.bucket));
+        write("average", fmt(state.estimate));
+        write("input", fmt(value("input", 0.6)));
+      }
+
+      function theme() {
+        var style = getComputedStyle(root);
+        function read(name, fallback) {
+          return style.getPropertyValue(name).trim() || fallback;
+        }
+        return {
+          muted: read("--text-faint", "#92908a"),
+          rule: read("--rule", "#e4e1d9"),
+          accent: read("--accent", "#8f4a1f"),
+        };
+      }
+
+      var lastPaint = 0;
+
+      function draw(time) {
+        if (running) {
+          var ticks = value("speed", 4);
+          for (var i = 0; i < ticks; i++) finishTick();
+        }
+
+        var colours = theme();
+        var ratio = Math.min(window.devicePixelRatio || 1, 2);
+        var width = canvas.clientWidth;
+        var height = canvas.clientHeight;
+        if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
+          canvas.width = width * ratio;
+          canvas.height = height * ratio;
+        }
+
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        var bitsHeight = 30;
+        var plotHeight = height - bitsHeight - 10;
+        var midline = plotHeight / 2;
+        var scale = plotHeight / 2 / 1.6;
+        var x = value("input", 0.6);
+
+        ctx.strokeStyle = colours.rule;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, midline);
+        ctx.lineTo(width, midline);
+        ctx.stroke();
+
+        ctx.strokeStyle = colours.muted;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, midline - x * scale);
+        ctx.lineTo(width, midline - x * scale);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        if (state.trace.length > 1) {
+          var step = width / (HISTORY - 1);
+          ctx.strokeStyle = colours.accent;
+          ctx.lineWidth = 1.75;
+          ctx.beginPath();
+          for (var t = 0; t < state.trace.length; t++) {
+            var px = t * step;
+            var py = midline - state.trace[t] * scale;
+            if (t === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+
+        var shown = Math.min(HISTORY, state.bits.length);
+        var recent = state.bits.slice(state.bits.length - shown);
+        var cell = width / HISTORY;
+        var top = plotHeight + 10;
+        for (var b = 0; b < recent.length; b++) {
+          ctx.fillStyle = recent[b] ? colours.accent : colours.rule;
+          var h = recent[b] ? bitsHeight : bitsHeight * 0.34;
+          ctx.fillRect(b * cell, top + (bitsHeight - h), Math.max(cell - 0.6, 0.7), h);
+        }
+
+        if (running && time - lastPaint > 120) {
+          lastPaint = time;
+          state.estimate = estimate();
+          renderChain();
+        }
+
+        requestAnimationFrame(draw);
+      }
+
+      // --- controls -------------------------------------------------------
+      var mirrors = [
+        ["input", "input-value", 3],
+        ["gain", "gain-value", 2],
+        ["speed", "speed-value", 0],
+      ];
+      mirrors.forEach(function (entry) {
+        var slider = control(entry[0]);
+        if (!slider) return;
+        slider.addEventListener("input", function () {
+          var label = out(entry[1]);
+          if (label) label.textContent = Number(slider.value).toFixed(entry[2]);
+          if (!running) renderChain();
+        });
+      });
+
+      root.querySelector('[data-action="stage"]').addEventListener("click", function () {
+        if (running) return;
+        advance();
+        renderChain();
+      });
+
+      root.querySelector('[data-action="tick"]').addEventListener("click", function () {
+        if (running) return;
+        finishTick();
+        renderChain();
+      });
+
+      var toggle = root.querySelector('[data-action="toggle"]');
+      toggle.addEventListener("click", function () {
+        running = !running;
+        toggle.textContent = running ? "Pause" : "Run";
+        root.setAttribute("data-running", String(running));
+        renderChain();
+      });
+
+      root.querySelector('[data-action="reset"]').addEventListener("click", reset);
+
+      var windows = root.querySelectorAll("[data-window]");
+      Array.prototype.forEach.call(windows, function (button) {
+        button.addEventListener("click", function () {
+          windowSize = Number(button.getAttribute("data-window"));
+          Array.prototype.forEach.call(windows, function (other) {
+            other.removeAttribute("data-active");
+          });
+          button.setAttribute("data-active", "true");
+          state.estimate = estimate();
+          renderChain();
+        });
+      });
+
+      renderChain();
+      requestAnimationFrame(draw);
+    }
+
+    function init() {
+      var roots = document.querySelectorAll('[data-demo="sigma-delta"]');
+      Array.prototype.forEach.call(roots, setup);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>

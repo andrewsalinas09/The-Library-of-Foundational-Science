@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output and generated caches
+dist/
+.astro/
+.vercel/
+.netlify/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*

@@ -1,0 +1,105 @@
+---
+import { getCollection, render } from "astro:content";
+import Base from "../layouts/Base.astro";
+import TableOfContents from "../components/TableOfContents.astro";
+import { buildToc, findHeadingDefects } from "../lib/toc";
+
+export async function getStaticPaths() {
+  const docs = await getCollection("docs", ({ data }) => !data.draft);
+  return docs.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content, headings, remarkPluginFrontmatter } = await render(entry);
+
+const toc = buildToc(headings);
+const stats = remarkPluginFrontmatter as {
+  wordCount?: number;
+  readingMinutes?: number;
+  needsMermaid?: boolean;
+  glossaryTerms?: number;
+  glossaryLinked?: number;
+};
+
+// Surface structural defects while editing rather than only in a lint run.
+const defects = findHeadingDefects(headings);
+if (import.meta.env.DEV && defects.length > 0) {
+  console.warn(
+    `\n[heading structure] ${entry.id}\n` +
+      defects.map((line) => `  - ${line}`).join("\n") +
+      "\n  These render correctly but the markdown levels are inconsistent.\n",
+  );
+}
+
+// Documents are neighbours when they share ideas, not when they share a
+// subject. This is the whole reason the library is a graph.
+const everything = await getCollection("docs", ({ data }) => !data.draft);
+const related = everything
+  .filter((other) => other.id !== entry.id)
+  .map((other) => ({
+    entry: other,
+    shared: other.data.ideas.filter((idea) => entry.data.ideas.includes(idea)),
+  }))
+  .filter((match) => match.shared.length > 0)
+  .sort((a, b) => b.shared.length - a.shared.length);
+
+const wordCount = stats?.wordCount ?? 0;
+---
+
+<Base title={entry.data.title} description={entry.data.subtitle} progress>
+  <Fragment slot="sidebar">
+    <a class="brand" href="/">
+      <span class="brand__mark">The Library of</span>
+      <span class="brand__name">Foundational Science</span>
+    </a>
+    <TableOfContents groups={toc} />
+  </Fragment>
+
+  <article class="essay">
+    <header class="essay__header">
+      <p class="essay__domain">{entry.data.domain}</p>
+      <h1 class="essay__title">{entry.data.title}</h1>
+      <p class="essay__subtitle">{entry.data.subtitle}</p>
+      <div class="essay__meta">
+        <span><strong>{wordCount.toLocaleString()}</strong> words</span>
+        <span><strong>{stats?.readingMinutes ?? 0}</strong> min read</span>
+        <span>assumes <strong>{entry.data.assumes}</strong></span>
+        {stats?.glossaryLinked ? (
+          <span><strong>{stats.glossaryTerms}</strong> defined terms</span>
+        ) : null}
+      </div>
+    </header>
+
+    {/* Scope the search index to the document body. */}
+    <div class="prose" data-pagefind-body>
+      <Content />
+    </div>
+
+    <footer class="essay__footer">
+      <h2>Ideas in this document</h2>
+      <div class="tag-row">
+        {entry.data.ideas.map((idea) => (
+          <a class="tag" href={`/ideas/${idea}/`}>{idea.replace(/-/g, " ")}</a>
+        ))}
+      </div>
+
+      {related.length > 0 && (
+        <Fragment>
+          <h2 style="margin-top:2rem">Documents sharing these ideas</h2>
+          <ul class="toc__list">
+            {related.map((match) => (
+              <li style="margin-bottom:0.6rem">
+                <a href={`/${match.entry.id}/`}>{match.entry.data.title}</a>
+                <span style="color:var(--text-faint)">
+                  {" "}— {match.shared.length} shared{" "}
+                  {match.shared.length === 1 ? "idea" : "ideas"}:{" "}
+                  {match.shared.map((idea) => idea.replace(/-/g, " ")).join(", ")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Fragment>
+      )}
+    </footer>
+  </article>
+</Base>

@@ -1,0 +1,83 @@
+# The controlled vocabulary of the library.
+#
+# `ideas` are the cross-cutting principles that make two documents from
+# unrelated fields neighbors. `mechanisms` are the concrete machines a
+# document explains. Both are validated at build time: a document tagged
+# with a slug that is not registered here fails the Astro build, which is
+# what keeps the vocabulary from drifting into four spellings of one idea.
+#
+# Adding a slug is cheap and encouraged. Inventing a synonym for an
+# existing slug is the failure mode this file exists to prevent, so read
+# before you add.
+
+ideas:
+  root-n-averaging: >-
+    Independent zero-mean errors shrink as one over the square root of N when
+    averaged. The engine behind most precision-from-repetition arguments.
+  white-noise: >-
+    Noise with a flat power spectral density. The frequency-domain spelling of
+    statistical independence, and the license that makes averaging pay.
+  flicker-noise: >-
+    1/f noise, whose density rises as frequency falls. It has memory, so
+    averaging stalls against it. The hard floor under every averaging scheme.
+  bias-vs-wobble: >-
+    Averaging destroys zero-mean wobble and is perfectly transparent to bias.
+    Every systematic offset must therefore be hunted individually.
+  feedback-integrator: >-
+    A loop containing an accumulator, whose stored value converges to an
+    estimate of a hidden parameter and keeps acting when the input stops.
+  precision-from-history: >-
+    The accuracy of a system located not in any component but in the
+    accumulated record of many individually mediocre corrections.
+  stability-licenses-integration: >-
+    A coherent local reference contributes no accuracy of its own but holds
+    still long enough for evidence to accumulate. Stillness as a precondition.
+  quantization-as-noise: >-
+    Deterministic rounding, applied to a signal lively enough to explore the
+    grid, manufactures errors that are zero-mean and white, hence averageable.
+  dither: >-
+    Noise added deliberately so that quantization errors stay honest and
+    averaging can recover detail finer than the grid.
+  oversampling: >-
+    Sampling far above the Nyquist requirement to trade surplus bandwidth for
+    resolution the hardware does not natively have.
+  noise-shaping: >-
+    Feedback that relocates quantization error out of the band where the signal
+    lives and piles it where nothing of value is listening.
+  complementary-filter: >-
+    Fusing a smooth-but-drifting source with a noisy-but-honest one by splitting
+    authority at a timescale. The Kalman filter is its optimal form.
+  crossover-timescale: >-
+    The interval at which two error curves intersect, one growing and one
+    shrinking, which is where a well-designed loop places its time constant.
+  holdover: >-
+    Coasting on a learned rate when the reference disappears. Degradation
+    rather than amnesia, and a direct measure of what the loop actually learned.
+  comparison-vs-absolute: >-
+    Comparing two quantities is the operation physics does natively and cheaply;
+    reporting an absolute value against a calibrated ladder is the expensive one.
+  precision-in-procedure-not-instrument: >-
+    A crude instrument wrapped in memory, feedback, and speed is a precise
+    instrument. Precision purchased once in design rather than per unit.
+  processing-gain: >-
+    The fixed exchange rate at which observation time or bandwidth buys
+    signal-to-noise ratio, once the shape of the wanted signal is known exactly.
+  known-signal-shape: >-
+    Knowing in advance precisely what you are looking for is what converts
+    patient listening into gain. Ignorance of the template forfeits the trade.
+  coherent-integration: >-
+    Summing with phase preserved, so wanted contributions add in amplitude
+    while unwanted ones add in power. The reason N beats the square root of N.
+
+mechanisms:
+  phase-locked-loop: Phase detector, loop filter, and controlled oscillator in feedback.
+  delta-sigma-modulation: Difference, accumulate, one-bit decide, correct; emits pulse density.
+  clock-data-recovery: A PLL that recovers a transmitter's clock from data transitions alone.
+  decimation-filtering: Cascaded sums and differences that mint many-bit words from a one-bit torrent.
+  round-trip-time-transfer: Measuring out-and-back delay on one path and halving it to defeat bias.
+  ddmtd: Digital dual mixer time difference; a vernier-style phase detector resolving picoseconds.
+  allan-deviation: Two-sample frequency stability statistic, reported as a function of averaging time.
+  synchronous-ethernet: Distributing frequency physically by recovering each node's transmit clock.
+  direct-sequence-spread-spectrum: Multiplying a slow message by a fast pseudorandom code to spread it across a wide band.
+  correlation-despreading: Multiplying by a local replica of the code and integrating, collapsing the signal back while noise stays spread.
+  matched-filter: The optimal detector for a known waveform in white noise; correlation against the template itself.
