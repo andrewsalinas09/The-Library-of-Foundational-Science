@@ -532,6 +532,27 @@ h4:hover > .heading-anchor,
   color: var(--text-faint);
 }
 
+/* Unit annotations, set apart from the quantity they belong to. */
+.demo__readouts span i,
+.demo__controls label > span:first-child i {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+.demo__controls label > span:first-child i {
+  font-size: 0.78em;
+}
+
+.demo__controls label > span:first-child i::before {
+  content: "· ";
+  opacity: 0.5;
+}
+
 .demo__readouts strong {
   font-size: 1.05rem;
   font-weight: 600;

@@ -65,9 +65,9 @@ const STAGES = [
 
   <div class="demo__readouts">
     <div><span>Tick</span><strong data-out="tick">0</strong></div>
-    <div><span>Input x</span><strong data-out="input">0.600</strong></div>
-    <div><span>Recovered x̂</span><strong data-out="average">0.000</strong></div>
-    <div><span>Bucket b</span><strong data-out="bucket">0.000</strong></div>
+    <div><span>Input x <i>FS</i></span><strong data-out="input">0.600</strong></div>
+    <div><span>Recovered x̂ <i>FS</i></span><strong data-out="average">0.000</strong></div>
+    <div><span>Bucket b <i>FS</i></span><strong data-out="bucket">0.000</strong></div>
   </div>
 
   <div class="chain">
@@ -95,13 +95,13 @@ const STAGES = [
 
   <div class="demo__controls">
     <label>
-      <span>Input voltage x</span>
+      <span>Input voltage x <i>FS</i></span>
       <input type="range" data-control="input" min="-0.95" max="0.95" step="0.001" value="0.6" />
       <output data-out="input-value">0.600</output>
     </label>
 
     <label>
-      <span>Loop gain k</span>
+      <span>Loop gain k <i>dimensionless</i></span>
       <input type="range" data-control="gain" min="0.05" max="0.6" step="0.01" value="0.25" />
       <output data-out="gain-value">0.25</output>
     </label>
@@ -113,7 +113,7 @@ const STAGES = [
     </label>
 
     <label>
-      <span>Window W</span>
+      <span>Window W <i>samples</i></span>
       <span class="demo__segmented" data-control="window">
         <button type="button" data-window="16">16</button>
         <button type="button" data-window="64">64</button>
@@ -122,6 +122,14 @@ const STAGES = [
       </span>
     </label>
   </div>
+
+  <p class="demo__note">
+    <strong>Units.</strong> Everything here is normalised to full scale (FS), as
+    the worked example above does: the input runs over ±1 FS and the feedback is
+    exactly ±1 FS, so the loop gain k and the bit d are dimensionless and the
+    window W counts samples. Nothing depends on whether full scale happens to be
+    a volt.
+  </p>
 
   <p class="demo__note">
     Step through one tick and watch where the crudeness goes. The comparator is
@@ -255,14 +263,22 @@ const STAGES = [
         switch (index) {
           case 0:
             if (p.bit === null) return "";
-            return fmt(state.bucket) + " > 0  →  d = " + p.bit;
+            return fmt(state.bucket) + " FS > 0  →  d = " + p.bit + " (bit)";
           case 1:
             if (p.feedback === null) return "";
-            return "d = " + p.bit + "  →  f = " + (p.feedback > 0 ? "+1" : "−1");
+            return (
+              "d = " + p.bit + "  →  f = " + (p.feedback > 0 ? "+1" : "−1") + " FS"
+            );
           case 2:
             if (p.error === null) return "";
             return (
-              "e = " + fmt(x) + " − (" + (p.feedback > 0 ? "+1" : "−1") + ") = " + fmt(p.error)
+              "e = " +
+              fmt(x) +
+              " − (" +
+              (p.feedback > 0 ? "+1" : "−1") +
+              ") = " +
+              fmt(p.error) +
+              " FS"
             );
           case 3:
             if (p.nextBucket === null) return "";
@@ -271,20 +287,22 @@ const STAGES = [
               fmt(state.bucket) +
               " + " +
               k.toFixed(2) +
-              "×(" +
+              " × (" +
               fmt(p.error) +
               ") = " +
-              fmt(p.nextBucket)
+              fmt(p.nextBucket) +
+              " FS"
             );
           case 4:
             if (!state.bits.length) return "";
             return (
               "bit " +
               state.bits[state.bits.length - 1] +
-              " appended · W=" +
+              " appended · W = " +
               windowSize +
-              "  →  x̂ = " +
-              fmt(state.estimate)
+              " samples  →  x̂ = " +
+              fmt(state.estimate) +
+              " FS"
             );
         }
         return "";
@@ -396,6 +414,16 @@ const STAGES = [
           var h = recent[b] ? bitsHeight : bitsHeight * 0.34;
           ctx.fillRect(b * cell, top + (bitsHeight - h), Math.max(cell - 0.6, 0.7), h);
         }
+
+        // Axis labels. Everything here is normalised to full scale, so the
+        // feedback swing is exactly ±1 FS and the input shares those units.
+        ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillStyle = colours.muted;
+        ctx.fillText("bucket b  [FS]", 4, 12);
+        ctx.fillText("input x (dashed)", 4, 24);
+        ctx.fillText("+1.6 FS", width - 46, 12);
+        ctx.fillText("−1.6 FS", width - 46, plotHeight - 3);
+        ctx.fillText("bitstream d  [bits]", 4, top + bitsHeight - 2);
 
         if (running && time - lastPaint > 120) {
           lastPaint = time;

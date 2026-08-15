@@ -72,10 +72,13 @@ const STAGES = [
 
   <div class="demo__readouts">
     <div><span>Postcard</span><strong data-out="pulse">0</strong></div>
-    <div><span>Phase error φ</span><strong data-out="phase">0.0 ns</strong></div>
-    <div><span>Tally I</span><strong data-out="tally">0.00</strong></div>
-    <div><span>True rate r</span><strong data-out="rate">+8.00</strong></div>
-    <div><span>Residual I + r</span><strong data-out="residual">+8.00</strong></div>
+    <div><span>Phase error φ <i>ns</i></span><strong data-out="phase">+0.0</strong></div>
+    <div><span>Tally I <i>ns/update</i></span><strong data-out="tally">+0.00</strong></div>
+    <div><span>True rate r <i>ns/update</i></span><strong data-out="rate">+8.00</strong></div>
+    <div>
+      <span>Residual I + r <i>ns/update</i></span>
+      <strong data-out="residual">+8.00</strong>
+    </div>
   </div>
 
   <div class="chain">
@@ -103,31 +106,31 @@ const STAGES = [
 
   <div class="demo__controls">
     <label>
-      <span>Postman jitter σ</span>
+      <span>Postman jitter σ <i>ns</i></span>
       <input type="range" data-control="jitter" min="0" max="30" step="0.5" value="10" />
       <output data-out="jitter-value">10.0</output>
     </label>
 
     <label>
-      <span>Crystal rate error r</span>
+      <span>Crystal rate error r <i>ns/update</i></span>
       <input type="range" data-control="rate" min="-20" max="20" step="0.5" value="8" />
       <output data-out="rate-value">+8.0</output>
     </label>
 
     <label>
-      <span>Proportional K<sub>p</sub></span>
+      <span>Proportional K<sub>p</sub> <i>per update</i></span>
       <input type="range" data-control="kp" min="0" max="0.8" step="0.01" value="0.2" />
       <output data-out="kp-value">0.20</output>
     </label>
 
     <label>
-      <span>Integral K<sub>i</sub></span>
+      <span>Integral K<sub>i</sub> <i>per update</i></span>
       <input type="range" data-control="ki" min="0" max="0.08" step="0.001" value="0.01" />
       <output data-out="ki-value">0.010</output>
     </label>
 
     <label>
-      <span>Aging drift</span>
+      <span>Aging drift <i>ns/update²</i></span>
       <input type="range" data-control="aging" min="0" max="0.04" step="0.002" value="0" />
       <output data-out="aging-value">0.000</output>
     </label>
@@ -138,6 +141,16 @@ const STAGES = [
       <output data-out="speed-value">2</output>
     </label>
   </div>
+
+  <p class="demo__note">
+    <strong>Units.</strong> One update is one postcard. Phase error φ, the
+    postman's jitter n, and the discrepancy ε are all times, in nanoseconds.
+    The proportional nudge p, the tally I, the correction y, and the crystal's
+    error r are all <em>rates</em>, in nanoseconds of phase gained per update,
+    which is why the tally settles at exactly minus r and the two cancel. K<sub
+    >p</sub> and K<sub>i</sub> convert a time into a rate, so they carry units
+    of per-update; aging is a rate of change of a rate, ns/update².
+  </p>
 
   <p class="demo__note">
     Watch the two lower traces, not the top one. The tally crawls toward
@@ -287,32 +300,55 @@ const STAGES = [
             if (cut && lastDone >= 0) return "reference lost · no measurement";
             if (p.error === null) return "";
             return (
-              "ε = " + fmt(state.phase, 1) + " + " + fmt(p.noise, 1) + " = " + fmt(p.error, 1)
+              "ε = " +
+              fmt(state.phase, 1) +
+              " + " +
+              fmt(p.noise, 1) +
+              " = " +
+              fmt(p.error, 1) +
+              " ns"
             );
           case 1:
             if (p.p === null) return "";
-            if (cut) return "no postcard · p = 0";
-            return "p = −" + kp.toFixed(2) + "×(" + fmt(p.error, 1) + ") = " + fmt(p.p, 2);
+            if (cut) return "no postcard · p = 0 ns/update";
+            return (
+              "p = −" +
+              kp.toFixed(2) +
+              " × (" +
+              fmt(p.error, 1) +
+              " ns) = " +
+              fmt(p.p, 2) +
+              " ns/update"
+            );
           case 2:
-            if (cut) return "tally held at " + fmt(state.tally, 2);
+            if (cut) return "tally held at " + fmt(state.tally, 2) + " ns/update";
             if (p.error === null) return "";
             return (
               "I = " +
               fmt(state.tally, 2) +
-              "   (moved by " +
+              " ns/update   (moved by " +
               fmt(-ki * p.error, 3) +
               ")"
             );
           case 3:
             if (p.y === null) return "";
-            return "y = " + fmt(p.p, 2) + " + " + fmt(state.tally, 2) + " = " + fmt(p.y, 2);
+            return (
+              "y = " +
+              fmt(p.p, 2) +
+              " + " +
+              fmt(state.tally, 2) +
+              " = " +
+              fmt(p.y, 2) +
+              " ns/update"
+            );
           case 4:
             if (!state.pulse) return "";
             return (
               "φ = " +
               fmt(state.phase, 1) +
               " ns   ·   free-running would be " +
-              fmt(state.free, 1)
+              fmt(state.free, 1) +
+              " ns"
             );
         }
         return "";
@@ -339,7 +375,7 @@ const STAGES = [
         );
         write("next", state.stage + 1 + ". " + STAGE_NAMES[state.stage]);
         write("pulse", String(state.pulse));
-        write("phase", fmt(state.phase, 1) + " ns");
+        write("phase", fmt(state.phase, 1));
         write("tally", fmt(state.tally, 2));
         write("rate", fmt(state.rate, 2));
         write("residual", fmt(state.tally + state.rate, 2));
@@ -431,9 +467,9 @@ const STAGES = [
         plot(ctx, state.traceFree, c.muted, 0, 0, width, topH, -peak, peak, true);
         plot(ctx, state.tracePhase, c.accent, 0, 0, width, topH, -peak, peak, false);
 
-        label(ctx, "phase error φ (ns)", 4, 12, c.muted);
-        label(ctx, "free-running", 4, 24, c.muted);
-        label(ctx, "±" + peak.toFixed(0), width - 34, 12, c.muted);
+        label(ctx, "phase error φ  [ns]", 4, 12, c.muted);
+        label(ctx, "free-running (dashed)", 4, 24, c.muted);
+        label(ctx, "±" + peak.toFixed(0) + " ns", width - 52, 12, c.muted);
 
         // --- lower panel: the tally converging on minus the true rate -------
         var lo = -Math.max(4, Math.abs(state.rate) * 2.2);
@@ -448,7 +484,9 @@ const STAGES = [
         plot(ctx, state.traceTruth, c.text, 0, botY, width, botH, lo, hi, true);
         plot(ctx, state.traceTally, c.accent, 0, botY, width, botH, lo, hi, false);
 
-        label(ctx, "tally I  vs  −r (dashed)", 4, botY + 12, c.muted);
+        label(ctx, "tally I  vs  −r (dashed)   [ns/update]", 4, botY + 12, c.muted);
+        label(ctx, hi.toFixed(1), width - 26, botY + 12, c.muted);
+        label(ctx, lo.toFixed(1), width - 26, botY + botH - 4, c.muted);
 
         if (cut) {
           ctx.fillStyle = c.accent;
