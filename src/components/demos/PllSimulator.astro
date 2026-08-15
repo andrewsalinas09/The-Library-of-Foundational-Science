@@ -1,0 +1,533 @@
+---
+import katex from "katex";
+
+/**
+ * The lighthouse keeper's loop, running.
+ *
+ * The document's six-postcard table is too short to show the thing it claims:
+ * that the proportional term thrashes with the jitter while the integrator's
+ * tally crawls monotonically toward the crystal's true frequency error. A few
+ * hundred updates make that obvious, and cutting the reference off mid-run
+ * turns the tally from an abstraction into the thing the clock coasts on.
+ *
+ * Arithmetic and sign conventions are exactly the document's:
+ *
+ *   e = phi + n        measured discrepancy: true phase error plus jitter
+ *   p = -Kp * e        proportional nudge
+ *   I = I - Ki * e     the tally, which converges to -r
+ *   y = p + I          rate correction applied this update
+ *   phi = phi + r + y  coast to the next postcard
+ *
+ * Equations are typeset here at build time and ship as plain HTML; only the
+ * numeric substitutions are generated at runtime. `is:inline` is required
+ * because Astro does not hoist bundled component scripts through
+ * content-collection MDX.
+ */
+
+const tex = (source: string) =>
+  katex.renderToString(source, { throwOnError: false, output: "html" });
+
+const STAGES = [
+  {
+    name: "Measure",
+    blurb: "The postcard arrives. What you read is the truth plus the postman.",
+    equation: tex("\\varepsilon_k = \\phi_k + n_k"),
+  },
+  {
+    name: "Proportional",
+    blurb: "A deliberately small fraction of today's discrepancy.",
+    equation: tex("p_k = -K_p\\,\\varepsilon_k"),
+  },
+  {
+    name: "Integrate",
+    blurb: "The running tally of every nudge ever made. This is the memory.",
+    equation: tex("I_k = I_{k-1} - K_i\\,\\varepsilon_k"),
+  },
+  {
+    name: "Steer",
+    blurb: "Trim the rate, never the reading, so time never jumps.",
+    equation: tex("y_k = p_k + I_k"),
+  },
+  {
+    name: "Coast",
+    blurb: "Free-run to the next postcard on the corrected rate.",
+    equation: tex("\\phi_{k+1} = \\phi_k + r + y_k"),
+  },
+];
+---
+
+<div class="demo" data-demo="pll">
+  <div class="demo__head">
+    <span class="demo__label">Disciplined oscillator</span>
+    <div class="demo__buttons">
+      <button type="button" data-action="stage">Next step</button>
+      <button type="button" data-action="tick">Finish update</button>
+      <button type="button" data-action="toggle">Run</button>
+      <button type="button" data-action="cut">Cut reference</button>
+      <button type="button" data-action="reset">Reset</button>
+    </div>
+  </div>
+
+  <canvas class="demo__canvas demo__canvas--tall" data-role="canvas"></canvas>
+
+  <div class="demo__readouts">
+    <div><span>Postcard</span><strong data-out="pulse">0</strong></div>
+    <div><span>Phase error φ</span><strong data-out="phase">0.0 ns</strong></div>
+    <div><span>Tally I</span><strong data-out="tally">0.00</strong></div>
+    <div><span>True rate r</span><strong data-out="rate">+8.00</strong></div>
+    <div><span>Residual I + r</span><strong data-out="residual">+8.00</strong></div>
+  </div>
+
+  <div class="chain">
+    <div class="chain__status">
+      <p><span>Just done</span><strong data-out="just">nothing yet</strong></p>
+      <p><span>Next</span><strong data-out="next">1. Measure</strong></p>
+    </div>
+
+    <ol class="chain__list">
+      {STAGES.map((stage, index) => (
+        <li class="chain__row" data-stage={index} data-state="idle">
+          <span class="chain__index">{index + 1}</span>
+          <div class="chain__body">
+            <p class="chain__name">{stage.name}</p>
+            <p class="chain__blurb">{stage.blurb}</p>
+          </div>
+          <div class="chain__maths">
+            <span class="chain__equation" set:html={stage.equation} />
+            <span class="chain__values" data-values={index}>&nbsp;</span>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </div>
+
+  <div class="demo__controls">
+    <label>
+      <span>Postman jitter σ</span>
+      <input type="range" data-control="jitter" min="0" max="30" step="0.5" value="10" />
+      <output data-out="jitter-value">10.0</output>
+    </label>
+
+    <label>
+      <span>Crystal rate error r</span>
+      <input type="range" data-control="rate" min="-20" max="20" step="0.5" value="8" />
+      <output data-out="rate-value">+8.0</output>
+    </label>
+
+    <label>
+      <span>Proportional K<sub>p</sub></span>
+      <input type="range" data-control="kp" min="0" max="0.8" step="0.01" value="0.2" />
+      <output data-out="kp-value">0.20</output>
+    </label>
+
+    <label>
+      <span>Integral K<sub>i</sub></span>
+      <input type="range" data-control="ki" min="0" max="0.08" step="0.001" value="0.01" />
+      <output data-out="ki-value">0.010</output>
+    </label>
+
+    <label>
+      <span>Aging drift</span>
+      <input type="range" data-control="aging" min="0" max="0.04" step="0.002" value="0" />
+      <output data-out="aging-value">0.000</output>
+    </label>
+
+    <label>
+      <span>Updates per frame</span>
+      <input type="range" data-control="speed" min="1" max="20" step="1" value="2" />
+      <output data-out="speed-value">2</output>
+    </label>
+  </div>
+
+  <p class="demo__note">
+    Watch the two lower traces, not the top one. The tally crawls toward
+    <em>minus</em> the crystal's true rate error and stays there, ignoring the
+    thrash, one small installment per postcard. Then press <strong>Cut
+    reference</strong>: the postcards stop, the proportional term goes to zero,
+    and the clock coasts on the tally alone. That is holdover, and what it
+    costs you is exactly the part of the drift the tally had not yet learned.
+  </p>
+</div>
+
+<script is:inline>
+  (function () {
+    var HISTORY = 260;
+    var STAGE_NAMES = ["Measure", "Proportional", "Integrate", "Steer", "Coast"];
+
+    function fmt(value, places) {
+      if (value === null || value === undefined) return "—";
+      var text = Math.abs(value).toFixed(places === undefined ? 2 : places);
+      return (value < 0 ? "−" : "+") + text;
+    }
+
+    /** Box-Muller: the postman's delay is zero-mean and white, as promised. */
+    function gaussian() {
+      var u = 0;
+      var v = 0;
+      while (u === 0) u = Math.random();
+      while (v === 0) v = Math.random();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
+
+    function setup(root) {
+      var canvas = root.querySelector('[data-role="canvas"]');
+      if (!canvas) return;
+
+      function out(name) {
+        return root.querySelector('[data-out="' + name + '"]');
+      }
+      function control(name) {
+        return root.querySelector('[data-control="' + name + '"]');
+      }
+      function value(name, fallback) {
+        var el = control(name);
+        return el ? Number(el.value) : fallback;
+      }
+      function write(name, text) {
+        var el = out(name);
+        if (el) el.textContent = text;
+      }
+
+      var rows = root.querySelectorAll(".chain__row");
+      var slots = root.querySelectorAll("[data-values]");
+
+      var state = null;
+      var running = false;
+      var cut = false;
+      var lastDone = -1;
+
+      function reset() {
+        state = {
+          phase: 0,
+          free: 0,
+          tally: 0,
+          rate: value("rate", 8),
+          pulse: 0,
+          stage: 0,
+          pending: { noise: null, error: null, p: null, y: null },
+          tracePhase: [],
+          traceFree: [],
+          traceTally: [],
+          traceTruth: [],
+        };
+        lastDone = -1;
+        cut = false;
+        var button = root.querySelector('[data-action="cut"]');
+        if (button) button.textContent = "Cut reference";
+        root.removeAttribute("data-cut");
+        render();
+      }
+
+      /** One stage of the loop. */
+      function advance() {
+        var kp = value("kp", 0.2);
+        var ki = value("ki", 0.01);
+        var sigma = value("jitter", 10);
+        var aging = value("aging", 0);
+        var p = state.pending;
+
+        switch (state.stage) {
+          case 0:
+            if (cut) {
+              p.noise = null;
+              p.error = null;
+            } else {
+              p.noise = gaussian() * sigma;
+              p.error = state.phase + p.noise;
+            }
+            break;
+          case 1:
+            p.p = cut ? 0 : -kp * p.error;
+            break;
+          case 2:
+            if (!cut) state.tally -= ki * p.error;
+            break;
+          case 3:
+            p.y = p.p + state.tally;
+            break;
+          case 4:
+            state.phase += state.rate + p.y;
+            state.free += state.rate;
+            state.rate += aging;
+            state.pulse += 1;
+            state.tracePhase.push(state.phase);
+            state.traceFree.push(state.free);
+            state.traceTally.push(state.tally);
+            state.traceTruth.push(-state.rate);
+            [
+              state.tracePhase,
+              state.traceFree,
+              state.traceTally,
+              state.traceTruth,
+            ].forEach(function (trace) {
+              if (trace.length > HISTORY) trace.splice(0, trace.length - HISTORY);
+            });
+            break;
+        }
+
+        lastDone = state.stage;
+        state.stage = (state.stage + 1) % 5;
+      }
+
+      function finishUpdate() {
+        var guard = 0;
+        do {
+          advance();
+          guard++;
+        } while (state.stage !== 0 && guard < 10);
+      }
+
+      function substitution(index) {
+        var kp = value("kp", 0.2);
+        var ki = value("ki", 0.01);
+        var p = state.pending;
+
+        switch (index) {
+          case 0:
+            if (cut && lastDone >= 0) return "reference lost · no measurement";
+            if (p.error === null) return "";
+            return (
+              "ε = " + fmt(state.phase, 1) + " + " + fmt(p.noise, 1) + " = " + fmt(p.error, 1)
+            );
+          case 1:
+            if (p.p === null) return "";
+            if (cut) return "no postcard · p = 0";
+            return "p = −" + kp.toFixed(2) + "×(" + fmt(p.error, 1) + ") = " + fmt(p.p, 2);
+          case 2:
+            if (cut) return "tally held at " + fmt(state.tally, 2);
+            if (p.error === null) return "";
+            return (
+              "I = " +
+              fmt(state.tally, 2) +
+              "   (moved by " +
+              fmt(-ki * p.error, 3) +
+              ")"
+            );
+          case 3:
+            if (p.y === null) return "";
+            return "y = " + fmt(p.p, 2) + " + " + fmt(state.tally, 2) + " = " + fmt(p.y, 2);
+          case 4:
+            if (!state.pulse) return "";
+            return (
+              "φ = " +
+              fmt(state.phase, 1) +
+              " ns   ·   free-running would be " +
+              fmt(state.free, 1)
+            );
+        }
+        return "";
+      }
+
+      function render() {
+        for (var i = 0; i < rows.length; i++) {
+          var name = "idle";
+          if (running) name = "done";
+          else if (i < state.stage) name = "done";
+          else if (i === state.stage) name = "next";
+          rows[i].setAttribute("data-state", name);
+          if (!running && i === lastDone) rows[i].setAttribute("data-just", "true");
+          else rows[i].removeAttribute("data-just");
+        }
+
+        for (var j = 0; j < slots.length; j++) {
+          slots[j].textContent = substitution(j) || " ";
+        }
+
+        write(
+          "just",
+          lastDone < 0 ? "nothing yet" : lastDone + 1 + ". " + STAGE_NAMES[lastDone]
+        );
+        write("next", state.stage + 1 + ". " + STAGE_NAMES[state.stage]);
+        write("pulse", String(state.pulse));
+        write("phase", fmt(state.phase, 1) + " ns");
+        write("tally", fmt(state.tally, 2));
+        write("rate", fmt(state.rate, 2));
+        write("residual", fmt(state.tally + state.rate, 2));
+      }
+
+      function theme() {
+        var style = getComputedStyle(root);
+        function read(name, fallback) {
+          return style.getPropertyValue(name).trim() || fallback;
+        }
+        return {
+          text: read("--text", "#1a1a17"),
+          muted: read("--text-faint", "#92908a"),
+          rule: read("--rule", "#e4e1d9"),
+          accent: read("--accent", "#8f4a1f"),
+        };
+      }
+
+      function plot(ctx, series, colour, x0, y0, w, h, lo, hi, dashed) {
+        if (series.length < 2) return;
+        var step = w / (HISTORY - 1);
+        var span = hi - lo || 1;
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = dashed ? 1.2 : 1.75;
+        ctx.setLineDash(dashed ? [4, 4] : []);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0, y0, w, h);
+        ctx.clip();
+        ctx.beginPath();
+        for (var i = 0; i < series.length; i++) {
+          var x = x0 + i * step;
+          var y = y0 + h - ((series[i] - lo) / span) * h;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+        ctx.setLineDash([]);
+      }
+
+      function label(ctx, text, x, y, colour) {
+        ctx.fillStyle = colour;
+        ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillText(text, x, y);
+      }
+
+      var lastPaint = 0;
+
+      function draw(time) {
+        if (running) {
+          var n = value("speed", 2);
+          for (var i = 0; i < n; i++) finishUpdate();
+        }
+
+        var c = theme();
+        var ratio = Math.min(window.devicePixelRatio || 1, 2);
+        var width = canvas.clientWidth;
+        var height = canvas.clientHeight;
+        if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
+          canvas.width = width * ratio;
+          canvas.height = height * ratio;
+        }
+
+        var ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+
+        var gap = 22;
+        var topH = (height - gap) * 0.56;
+        var botY = topH + gap;
+        var botH = height - botY;
+
+        // --- upper panel: phase error, disciplined against free-running -----
+        var peak = 30;
+        for (var a = 0; a < state.tracePhase.length; a++) {
+          peak = Math.max(peak, Math.abs(state.tracePhase[a]));
+        }
+        peak *= 1.35;
+
+        ctx.strokeStyle = c.rule;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, topH / 2);
+        ctx.lineTo(width, topH / 2);
+        ctx.stroke();
+
+        plot(ctx, state.traceFree, c.muted, 0, 0, width, topH, -peak, peak, true);
+        plot(ctx, state.tracePhase, c.accent, 0, 0, width, topH, -peak, peak, false);
+
+        label(ctx, "phase error φ (ns)", 4, 12, c.muted);
+        label(ctx, "free-running", 4, 24, c.muted);
+        label(ctx, "±" + peak.toFixed(0), width - 34, 12, c.muted);
+
+        // --- lower panel: the tally converging on minus the true rate -------
+        var lo = -Math.max(4, Math.abs(state.rate) * 2.2);
+        var hi = Math.max(4, Math.abs(state.rate) * 2.2);
+
+        ctx.strokeStyle = c.rule;
+        ctx.beginPath();
+        ctx.moveTo(0, botY);
+        ctx.lineTo(width, botY);
+        ctx.stroke();
+
+        plot(ctx, state.traceTruth, c.text, 0, botY, width, botH, lo, hi, true);
+        plot(ctx, state.traceTally, c.accent, 0, botY, width, botH, lo, hi, false);
+
+        label(ctx, "tally I  vs  −r (dashed)", 4, botY + 12, c.muted);
+
+        if (cut) {
+          ctx.fillStyle = c.accent;
+          ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
+          ctx.fillText("HOLDOVER · reference cut", width - 152, botY + 12);
+        }
+
+        if (running && time - lastPaint > 120) {
+          lastPaint = time;
+          render();
+        }
+
+        requestAnimationFrame(draw);
+      }
+
+      // --- controls -------------------------------------------------------
+      var mirrors = [
+        ["jitter", "jitter-value", 1],
+        ["rate", "rate-value", 1],
+        ["kp", "kp-value", 2],
+        ["ki", "ki-value", 3],
+        ["aging", "aging-value", 3],
+        ["speed", "speed-value", 0],
+      ];
+      mirrors.forEach(function (entry) {
+        var slider = control(entry[0]);
+        if (!slider) return;
+        slider.addEventListener("input", function () {
+          var el = out(entry[1]);
+          if (el) el.textContent = Number(slider.value).toFixed(entry[2]);
+          if (entry[0] === "rate") state.rate = Number(slider.value);
+          if (!running) render();
+        });
+      });
+
+      root.querySelector('[data-action="stage"]').addEventListener("click", function () {
+        if (!running) {
+          advance();
+          render();
+        }
+      });
+      root.querySelector('[data-action="tick"]').addEventListener("click", function () {
+        if (!running) {
+          finishUpdate();
+          render();
+        }
+      });
+
+      var toggle = root.querySelector('[data-action="toggle"]');
+      toggle.addEventListener("click", function () {
+        running = !running;
+        toggle.textContent = running ? "Pause" : "Run";
+        render();
+      });
+
+      var cutButton = root.querySelector('[data-action="cut"]');
+      cutButton.addEventListener("click", function () {
+        cut = !cut;
+        cutButton.textContent = cut ? "Restore reference" : "Cut reference";
+        if (cut) root.setAttribute("data-cut", "true");
+        else root.removeAttribute("data-cut");
+        render();
+      });
+
+      root.querySelector('[data-action="reset"]').addEventListener("click", reset);
+
+      reset();
+      requestAnimationFrame(draw);
+    }
+
+    function init() {
+      var roots = document.querySelectorAll('[data-demo="pll"]');
+      Array.prototype.forEach.call(roots, setup);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>

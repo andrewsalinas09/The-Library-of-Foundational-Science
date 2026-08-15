@@ -495,6 +495,20 @@ h4:hover > .heading-anchor,
   background: var(--bg-sunken);
 }
 
+/* Two stacked panels need more room than one. */
+.demo__canvas--tall {
+  height: 270px;
+}
+
+/* Holdover is a state worth seeing at a glance, not only reading. */
+.demo[data-cut="true"] {
+  border-color: var(--accent);
+}
+
+.demo[data-cut="true"] .demo__canvas {
+  background: var(--accent-wash);
+}
+
 .demo__readouts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));

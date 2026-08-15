@@ -1,0 +1,350 @@
+---
+uid: kq7m2p94
+title: The Disciplined Clock
+subtitle: How white noise, the square root of N, and one feedback loop turn two flawed timekeepers into a nearly perfect one
+domain: metrology / timekeeping
+assumes: nothing
+mechanisms:
+  - phase-locked-loop
+  - clock-data-recovery
+  - allan-deviation
+  - round-trip-time-transfer
+  - ddmtd
+  - synchronous-ethernet
+ideas:
+  - root-n-averaging
+  - white-noise
+  - flicker-noise
+  - bias-vs-wobble
+  - feedback-integrator
+  - precision-from-history
+  - stability-licenses-integration
+  - quantization-as-noise
+  - dither
+  - complementary-filter
+  - crossover-timescale
+  - holdover
+analogy: >-
+  A lighthouse keeper trimming her watch's rate by one percent of each day's
+  postcard discrepancy, and keeping a running tally of every nudge.
+claim: >-
+  A two-dollar crystal and a GPS pulse that is wrong by 15 nanoseconds every
+  second, joined by one feedback loop, keep time to one part in a trillion.
+status: published
+created: 2026-08-13
+---
+
+import PllSimulator from "@demos/PllSimulator.astro";
+
+## Preface: the punchline up front
+
+Here is the claim this document exists to earn.
+
+Take a quartz crystal oscillator that costs two dollars and, left alone, wanders off true time by a few parts per million, which is about a quarter second per day. Take a GPS receiver whose once-per-second output pulse is, on any individual second, wrong by around fifteen nanoseconds in a random direction. Neither ingredient is impressive. Yet if you connect them with one feedback loop of a specific, well-chosen sluggishness, the combination keeps time to about one part in $10^{12}$: over a full day it accumulates roughly ten nanoseconds of error, a hundred thousand times better than the crystal alone, and it stays smooth from one microsecond to the next in a way the jittery GPS pulses never were. The whole is not just better than either part. It is better than either part at every timescale simultaneously.
+
+The same trick, pushed harder, is how the White Rabbit network at CERN distributes time over ten kilometers of ordinary optical fiber with errors under one nanosecond, using commodity gigabit Ethernet parts. It is how a WiFi chip with a plain one-microsecond counter can synchronize two devices to the very floor of that counter's resolution. And it is how every phone in your pocket fuses a drifting gyroscope with a jittery GPS into a position estimate better than either.
+
+Three ideas carry all of the weight, and this document builds each one from zero: what an oscillator physically is and how its errors grow with time; what white noise is, why "white" is the exact license that lets averaging shrink errors as one over the square root of N, and why noise is quoted in strange units like volts per root hertz; and how a phase-locked loop is nothing more than a disciplined procedure for averaging, wearing a feedback loop as a costume. By the end, the numbers in the first paragraph should feel not like magic but like arithmetic you can check, and you will be able to say precisely where the final accuracy lives, because it does not live in either ingredient.
+
+---
+
+# Part I: Raw materials
+
+## 1. What a clock actually is
+
+Strip away everything cultural and a clock is exactly two components: something that repeats, and something that counts the repeats.
+
+The repeating thing is called an **oscillator**. It can be a pendulum swinging, a quartz sliver flexing, a cesium atom's electron flipping between two energy states, or a voltage in a circuit going up and down. All that matters is that it produces events, called cycles, at a rate that is as constant as possible. The number of cycles per second is the oscillator's **frequency**, measured in **hertz** (Hz), which literally just means "per second." A 10 MHz oscillator produces ten million cycles every second. The duration of one cycle is the **period**, which is one divided by the frequency: 100 nanoseconds for our 10 MHz example, where a nanosecond (ns) is a billionth of a second and a microsecond (µs) is a millionth.
+
+The counting thing is a **counter**: a register that increments by one on each cycle. The counter's value is the time. When your watch says 3:47:12, that is a dressed-up counter reading. This sounds too obvious to state, but it hides the most important structural fact in all of timekeeping: **time is the integral of frequency**. The counter does not know the current frequency; it only knows the running total of all cycles ever counted. Hold this thought, because it means frequency errors do not stay put. They accumulate.
+
+There is a third word we need, and it is the one the whole field secretly revolves around: **phase**. Phase is the fractional position within the current cycle, plus the count of all completed cycles. If frequency is "how fast the wheel spins," phase is "the total angle the wheel has turned since the beginning of history." Two clocks can have identical frequencies and still disagree on the time; they have a phase offset. Two clocks can momentarily agree on the time while one runs fast; their phases are crossing. When we say two clocks are **synchronized**, we mean their phases agree. When we say they are **syntonized** (a real word, worth owning), we mean only their frequencies agree. The entire discipline of time transfer is the art of measuring and steering phase.
+
+One more piece of vocabulary and this section has earned its keep. Errors in clocks are almost always quoted as **fractional frequency error**, written y: the frequency error divided by the frequency itself. A 10 MHz oscillator that actually runs at 10,000,001 Hz has y = $1 \times 10^{-7}$, also spoken as "0.1 parts per million" or 0.1 ppm. Fractional units are used because they are what accumulation cares about: a clock with y = $1 \times 10^{-6}$ loses or gains a microsecond every second, 86.4 milliseconds every day, regardless of whether it is built on a 32 kHz watch crystal or a 100 MHz FPGA clock.
+
+## 2. The quartz crystal: a bell you strike with electricity
+
+Almost every electronic clock, from a wristwatch to a WiFi chip to an FPGA development board, gets its heartbeat from a small slab of quartz. To understand why, and why it eventually fails you, we need two physical facts.
+
+The first is **resonance**. Any stiff object with mass has frequencies at which it prefers to vibrate. Strike a wine glass and it rings at its natural note; the note is set by the glass's geometry and material, not by how you struck it. The quality of a resonator is captured by a number called **Q**: roughly, the number of cycles the object rings before its vibration decays away. A wine glass has a Q of a few thousand. A well-made quartz resonator has a Q between $10^{4}$ and $10^{6}$. High Q matters for one reason worth flagging in bold: **a high-Q resonator is stubborn**. Its ringing frequency is enormously insensitive to the details of the circuit driving it, because the resonator stores far more energy in its vibration than the circuit exchanges with it per cycle. The frequency belongs to the quartz, not to the surrounding electronics. Hold this thought.
+
+The second fact is **piezoelectricity**. Quartz is a crystal whose lattice is slightly lopsided electrically, so squeezing it produces a voltage across its faces, and, running the effect in reverse, applying a voltage makes it physically flex. This is the transducer that lets an electrical circuit strike the bell and hear it ring. An **oscillator circuit** is then just an amplifier that listens to the crystal's ring, boosts it, and feeds it back in phase, so the ringing never decays. The output is a steady electrical wave at the crystal's mechanical resonance.
+
+How good is this? A garden-variety crystal is cut and trimmed at the factory to within about ±20 ppm of its nominal frequency, and then wanders another ±20 ppm or so over the industrial temperature range, because the quartz's stiffness changes slightly with temperature. It also **ages**: the mounting stresses relax and stray molecules adsorb onto or evaporate off the surface, shifting the frequency by parts per million per year, fastest when the crystal is young. A crystal oscillator running open loop, with nothing correcting it, is called **free-running**. Free-running is the natural state of every crystal in every gadget you own; whatever frequency it happens to have, including its temperature wobble and aging drift, is simply what your device believes a second is.
+
+Industry sells a ladder of increasingly heroic fixes. A **TCXO** (temperature-compensated crystal oscillator, a few dollars) measures its own temperature and nudges the frequency electronically, reaching ±0.5 ppm or so. An **OCXO** (oven-controlled, tens to hundreds of dollars, a few watts of heater power) locks the crystal's temperature at a hot setpoint around 80 °C where the frequency-versus-temperature curve is flat, reaching parts per billion, with beautiful short-term purity. Above that sit atomic references: a **rubidium standard** (Rb, roughly a thousand dollars used) disciplines a crystal to an atomic transition and holds parts in $10^{11}$ for months, and a **cesium beam** or GPS-delivered time holds parts in $10^{13}$ and better, indefinitely, because the SI second is literally defined by the cesium atom. Notice the pattern in that last sentence, because it is this document's mechanism appearing early: even the atomic standards are internally a crystal being corrected by something more trustworthy. Nobody uses atoms directly as an oscillator output; atoms are used as the referee for a crystal. **Everything in timekeeping is a fast, smooth, drifty thing disciplined by a slow, noisy, honest thing.** We will spend Part II learning exactly how.
+
+One number to keep: the ubiquitous watch crystal runs at 32,768 Hz, which is $2^{15}$, so a 15-stage binary counter divides it to exactly one pulse per second. And one flag for later: the crystal's virtues are short-term. Over one second it is magnificently steady, often stable to parts in $10^{10}$ or $10^{11}$. Its vices, temperature and aging, are slow. This asymmetry, good at short timescales and bad at long ones, is half of the puzzle piece that the mechanism in Part II will snap together.
+
+## 3. How clock errors grow: the ramp and the parabola
+
+Because time is the integral of frequency, clock errors have a shape, and the shape is the thing you must internalize before any of the statistics makes sense.
+
+Suppose your crystal has a constant fractional frequency error y = +$1 \times 10^{-6}$ (one ppm fast). Its time error does not sit at some fixed value; it grows as a straight line, a **ramp**: one microsecond of gained time per second, 3.6 milliseconds per hour, 86 milliseconds per day. A pure phase offset, by contrast, is flat: if your clock is set 5 ms late but runs at exactly the right rate, it stays 5 ms late forever. And if the frequency error itself is changing at a steady rate, as it does with aging or a slow temperature swing, the time error grows as a **parabola**, because you are integrating a ramp.
+
+Flat, ramp, parabola. Phase offset, frequency offset, frequency drift. These three shapes are the fingerprints you will use for the rest of this document to identify what kind of error you are looking at, and they explain a fact that surprises newcomers: **a small frequency error always eventually beats a large phase error**. A clock set perfectly but running 1 ppm fast is worse after one day than a clock set a full millisecond wrong but running true. Time transfer people are therefore obsessed with frequency, and time-and-a-half obsessed with drift, because those are the errors that compound.
+
+This also tells you what a correction system must do. Fixing the phase once (setting the watch) is a one-time patch that a frequency error immediately begins to erode. A real fix must estimate and remove the frequency error, and ideally its drift, so that between corrections the clock coasts on a corrected rate. Remember this asymmetry: **you set phase once, but you must learn frequency**, and learning, as we are about to see, is a statistical act performed on noisy measurements.
+
+## 4. Randomness, the mean, and where the square root of N comes from
+
+Every measurement we will ever make of a clock is contaminated by randomness, so we need a small, honest toolkit for talking about random numbers. Nothing here requires more than arithmetic.
+
+A **random variable** is a number that comes out different each time you look: the delay of a GPS pulse, the reading of a jittery timestamp. Its **mean** is the value it averages toward over many looks, the center of gravity of its outcomes. Its **variance** is the average of the squared distance from the mean, and the square root of the variance is the **standard deviation**, written $\sigma$ (sigma), which is the honest answer to "how big is the wobble, typically, in the original units?" If a GPS pulse arrives with $\sigma = 15$ ns, then a typical pulse is around 15 ns early or late, occasional ones are 30 or 45 ns off, and almost none are 100 ns off.
+
+Two properties of a random error matter more than everything else combined, and I will name them with care because the entire mechanism rests on them.
+
+The first is being **zero-mean**: the error's mean is zero, meaning it is early as often and as much as it is late, with no systematic lean. A zero-mean error is a wobble around the truth. An error with a nonzero mean is called a **bias**, and it is a different animal entirely: a postman who is randomly early or late by up to five minutes is zero-mean; a postman who is always three minutes late has a bias. Flag this now, in bold, because it is the fine print under everything that follows: **averaging destroys wobble but is perfectly transparent to bias**. Average a million biased measurements and you get the bias, measured exquisitely well.
+
+The second is **independence**: one error tells you nothing about the next. Today's postman delay does not influence tomorrow's. Errors can be zero-mean yet dependent (a postman who alternates early, late, early, late), and independence is what will turn out to make averaging work at full strength.
+
+Now the central result. Suppose you take N independent, zero-mean measurements, each with standard deviation $\sigma$, and you average them. What is the wobble of the average? Here is the plain-words derivation. Adding N independent errors is like a drunkard taking N random steps: the steps partially cancel, and the typical distance from the start grows not like N but like the square root of N. (Why $\sqrt{N}$: variances of independent errors add, so N steps of variance $\sigma^2$ pile up to variance Nσ², and taking the square root to get back to ordinary units gives $\sqrt{N} \cdot \sigma$.) The sum of the errors therefore has typical size $\sqrt{N} \cdot \sigma$. But the average is the sum divided by N, so its typical error is $\sqrt{N} \cdot \sigma$ / N, which is:
+
+$$
+\sigma_{\text{avg}} = \frac{\sigma}{\sqrt{N}}
+$$
+
+That formula is the engine of this entire document, so let us make sure it feels physical. Average 100 GPS pulses, each wobbling by 15 ns, and the average wobbles by 1.5 ns. Average 10,000 and it wobbles by 0.15 ns. The individual measurements never got better; the ensemble did. And notice the two tolls collected at the gate: the errors had to be zero-mean (otherwise you converge beautifully to the wrong answer) and independent (otherwise the drunkard's steps conspire, cancel less, and the $\sqrt{N}$ slows down or stalls). **The $1/\sqrt{N}$ law is not a property of averaging. It is a property of the noise.** Averaging is just the act of showing up to collect what the noise's structure owes you. This is why the next section, on what "white" means, is not optional background; it is the deed of ownership.
+
+One vocabulary hook before moving on: you have already met $\sigma/\sqrt{N}$ in the wild. When astrophotographers stack 400 exposures of a faint galaxy and the noise drops by a factor of 20, that is this law. When a poll of 1,000 people has a ±3% margin of error and a poll of 4,000 has ±1.5%, that is this law. It is the same money everywhere.
+
+## 5. White noise, the spectrum, and why noise is quoted per root hertz
+
+We now have to talk about noise as a thing extended in time, not just as a single random number, because clocks live in time and so do their errors.
+
+A **noise waveform** is a signal whose value at each instant is random: the hiss from a speaker with no music playing, the wander of a timestamp from second to second. The single most useful question you can ask about a noise waveform is: how is its power distributed across frequencies? Just as a musical chord can be decomposed into notes, any waveform can be decomposed into sine waves of different frequencies, and noise is no exception. The function that reports how much noise power lives at each frequency is the **power spectral density**, or PSD. Its units deserve a moment of genuine attention rather than a shrug, because people meet "$\text{nV}/\sqrt{\text{Hz}}$" on a datasheet and quietly decide never to think about it again.
+
+Power spectral density is power per unit of frequency: if the noise is a voltage, its PSD has units of volts-squared per hertz ($\text{V}^2/\text{Hz}$), because electrical power goes as voltage squared. Read it like a population density map: the map does not tell you how many people are in your city; it tells you people per square kilometer, and you multiply by your city's area to get a count. Likewise the PSD does not tell you how much noise you will see; it tells you noise power per hertz, and you multiply by how many hertz you are listening to. That listening width is your **bandwidth**: every real measurement system responds only to some range of frequencies, and the width of that range, in Hz, is its bandwidth. A slow, sluggish voltmeter has a bandwidth of maybe 1 Hz; a fast oscilloscope front end might have $10^{9}$ Hz.
+
+So: total noise power = PSD × bandwidth. And here is where the strange unit comes from. Engineers prefer to quote noise amplitude (volts, or nanoseconds) rather than power, and amplitude is the square root of power. Taking the square root of "$\text{V}^2/\text{Hz} \times Hz$" gives "$\text{V}/\sqrt{\text{Hz}} \times \sqrt{\text{Hz}}$". The density itself, expressed in amplitude terms, therefore carries units of **volts per root hertz**, and you multiply by the square root of your bandwidth to get the actual RMS wobble you will observe. A 1 kΩ resistor at room temperature hisses thermally at about 4 $\text{nV}/\sqrt{\text{Hz}}$; listen to it through a 1 MHz bandwidth ($\sqrt{10^{6}} = 1000$) and you see 4 µV of RMS noise; narrow your bandwidth to 100 Hz and the same resistor shows only 40 nV. **The noise did not change. Your window did.** Per-root-hertz units are the datasheet's way of refusing to guess your window.
+
+Now the star of the show. **White noise** is noise whose PSD is flat: equal power in every hertz of frequency, from the lowest to the highest, the way white light contains every color equally (that is where the name comes from). Flatness of the spectrum sounds like an abstract property, but it is secretly the same statement as the independence we demanded in section 4, wearing different clothes. A waveform whose samples are all mutually independent has, when you decompose it, no preference for any frequency; conversely, any tilt in the spectrum means some memory connects one moment to the next. **"White" is the frequency-domain spelling of "independent."** One fact, two alphabets.
+
+And now two threads we have been carrying tie themselves together in the sentence this section exists for. Averaging N samples is, viewed from the frequency domain, nothing but a narrowing of bandwidth: a boxcar average of N samples taken at rate f_s responds only to frequencies below roughly f_s/(2N), so it shrinks your listening window by a factor of N. Noise power = density × bandwidth, so the power drops by N and the amplitude by $\sqrt{N}$. **The $1/\sqrt{N}$ law of averaging and the per-root-hertz unit on a datasheet are the same fact stated in the time domain and the frequency domain.** When you average, you are trading bandwidth for noise at a fixed exchange rate set by the noise density, and the exchange rate is honest only because white noise has the same density at every frequency: no matter how far down in bandwidth you go, there is proportionally less noise waiting for you there. Noise that is not white breaks the exchange rate, and we will meet the most important non-white noise, called flicker, in the fine print, where it will put a hard floor under everything.
+
+## 6. Sampling and quantization: the two grids
+
+Every digital system that touches a signal imposes two grids on it, and each grid injects an error we must account for.
+
+**Sampling** is the grid in time: instead of knowing the signal always, you know it only at discrete instants, typically evenly spaced at the sampling rate f_s. The celebrated result here (the Nyquist criterion, 1928) is that a signal containing no frequencies above f_s/2 is captured perfectly by its samples; the grid in time costs you nothing provided the signal is slow enough. For our purposes the useful corollary is about noise: sampled white noise occupies the band from 0 to f_s/2, so all of its power is squeezed into that range, and that is the band that averaging then narrows.
+
+**Quantization** is the grid in amplitude, and it matters enormously to timing, in a disguise we will unmask in a moment. A digital measurement cannot report any value; it reports the nearest rung on a ladder of allowed values, spaced q apart (q is one **least significant bit**, or LSB). The reported value therefore differs from the truth by an error between −q/2 and +q/2. If the true signal moves around enough to land at effectively random heights between the rungs, this error behaves like a zero-mean random variable, uniformly spread across its ±q/2 range, and a one-line calculation gives its standard deviation as **$q/\sqrt{12}$ ≈ 0.29 q**. Better still, under those conditions successive quantization errors are nearly independent of one another: quantization noise is approximately white. Pause on how strange and wonderful that is. A perfectly deterministic act of rounding, applied to a lively signal, manufactures errors that satisfy exactly the two conditions (zero-mean, independent) that averaging demands. **Rounding error, in the presence of motion, is honest noise, and honest noise can be averaged away.** A 12-bit converter, averaged 256-fold, resolves detail four bits finer than its own ladder.
+
+The clause "if the signal moves around enough" is load-bearing, and engineers do not leave it to chance. If the signal is too quiet, sitting between the same two rungs forever, the rounding error stops being random: it becomes a fixed, systematic bias (or worse, an ugly correlated pattern), and averaging preserves it faithfully, as biases are always preserved. The fix is deliberately adding a small amount of random noise before quantizing, called **dither**, to keep the signal exploring the rungs so its rounding errors stay honest. You have met dither before: audio mastering adds it before truncating to 16 bits, and image processing adds it before reducing colors, precisely so that quantization artifacts dissolve into an averageable hiss instead of freezing into visible bands. **Adding noise on purpose to make errors averageable is a respected engineering move**, and it will reappear when we look at GPS receivers.
+
+## 7. Jitter: quantization's sibling in time
+
+Now the unmasking. Take everything from the last section and rotate it ninety degrees, from the amplitude axis onto the time axis, and you have the vocabulary of timing.
+
+**Jitter** is the random error in when an edge occurs or when an event is timestamped, exactly as quantization error was the error in what value got reported. It has the same statistical anatomy: an RMS size (its $\sigma$, in seconds), a question of whether it is zero-mean, and a question of whether successive jitters are independent, that is, whether the jitter is white.
+
+Timing systems suffer both grids at once. A counter running at 1 MHz can only timestamp an event to the nearest microsecond: that is pure quantization, a ladder in time with q = 1 µs and therefore an RMS error of $1/\sqrt{12}$ µs ≈ 0.29 µs per raw timestamp, and it is exactly the situation in a WiFi chip's timing counter, a fact we will exploit later. On top of the grid sits genuine physical randomness: thermal noise in the transistors that decide when a rising edge has "officially" crossed threshold, interrupt latency wobble in a processor, the variable queuing of a packet in a network stack. Each source contributes its $\sigma$, and independent σs combine by adding their squares (the same variance-adding rule from section 4), so one dominant jitter source usually swamps the rest.
+
+The crucial fact, and the reason Part I is now complete, is this: to the extent that jitter is zero-mean and white, **timestamps are just noisy measurements of phase, and everything we established about noisy measurements applies verbatim**. Average N of them and the phase estimate improves by $\sqrt{N}$. Narrow your effective bandwidth and the jitter you see shrinks per root hertz. Feed a lively signal to a coarse time grid and the grid's rounding dissolves into averageable hiss. We have all the raw materials. What we do not yet have is a machine that performs this averaging continuously, without ever stopping the clock, while simultaneously learning the crystal's frequency error and bracing for the reference to disappear. That machine is Part II.
+
+---
+
+# Part II: The mechanism
+
+## 8. The problem, stated honestly
+
+You possess two timekeepers, and their virtues are exactly complementary.
+
+The crystal is smooth and fast but dishonest over the long haul. From one millisecond to the next it barely wobbles at all; you can subdivide its cycles and trust every microsecond-scale interval it hands you. But it does not know what a second is, only what its own second is, and its own second drifts with temperature and age. Left free-running, its time error ramps and then curves away parabolically, without limit.
+
+The GPS pulse is honest but jittery and slow. Averaged over enough pulses, it is anchored to atomic time, ultimately to the cesium definition of the second itself, so its errors are (to an excellent approximation, with fine print later) zero-mean: it wobbles around the truth rather than leaning away from it. But each individual pulse is 15 ns off in a random direction, it only speaks once per second, and it can vanish for hours when the antenna is blocked.
+
+The problem: produce one output clock that has the crystal's smoothness at short timescales, the GPS's honesty at long timescales, and degrades gracefully when the GPS disappears. This is not a compromise between the two sources. Done right, the output is better than either source at every timescale, and the aim of this Part is to make you see why that is not a violation of some conservation law.
+
+## 9. Two naive approaches, and exactly why they fail
+
+**Naive approach one: just use the reference.** Throw the crystal away and drive everything from the GPS pulses. This fails twice. First, the output now carries the full 15 ns wobble of every individual pulse; you have adopted the reference's noise as your own, at full strength, with no averaging anywhere. Second, between pulses, and during dropouts, you have nothing at all: no microsecond-scale time, no holdover, silence. You kept the honesty and threw away the smoothness.
+
+**Naive approach two: jam the clock.** Keep the crystal for the fast timebase, and whenever a GPS pulse arrives, forcibly set the counter to what the pulse says (a "jam sync"). This is what naive network time code does, and its failure is more instructive. The output now jumps by tens of nanoseconds every second, in a random direction, because each jam faithfully copies that pulse's individual jitter into your clock: again no averaging, the $\sigma$ of one measurement passed straight through. Worse, the clock sometimes jumps backward, which downstream software experiences as time running in reverse. And worst of all, nothing was learned: the crystal's frequency error was never estimated, so the moment pulses stop, the clock reverts to full free-running drift, as ignorant as the day it booted. Jam syncing spends every measurement on patching phase, the error you only need to fix once, and spends nothing on learning frequency, the error that compounds.
+
+Read the two failures side by side and they point, like two arrows, at the fix. The output must come from the crystal (for smoothness and holdover), never directly from the reference. The reference must be applied gently, spread over many pulses, so that what steers the crystal is an average, entitled to the $1/\sqrt{N}$ discount, rather than any single noisy pulse. And the steering must adjust the crystal's rate, not just its reading, so that the system accumulates a memory of the crystal's frequency error and can coast on that memory when the reference disappears. Gentle, averaged, rate-based correction: now we build it, first as a story, then as a circuit.
+
+## 10. The lighthouse keeper: the central analogy
+
+A keeper lives alone in a lighthouse. She owns one wristwatch: a fine mechanical piece, silky from second to second, but it gains time, roughly a second and a half per day, and the gain rate itself creeps as the mainspring ages and the seasons change the tower's temperature. Once a day, a postman bicycles up the cliff road and hands her a postcard from the national observatory. The postcard is printed at the exact moment of noon, and the ride from the observatory takes the postman a variable time: sometimes headwind, sometimes tailwind, five minutes early to five minutes late, with no lean either way and no memory from one day to the next. His delay, in our terms, is zero-mean white noise with $\sigma$ of a few minutes.
+
+Whenever a postcard arrives, the keeper performs one comparison: she looks at her wristwatch at the moment of handoff and writes down the difference between what the watch says and what the postcard implies. That difference is one noisy measurement of her watch's error: the true watch error plus the postman's random delay. Call it the day's **discrepancy**.
+
+What should she do with it? Everything in section 9 warns her against the two extremes. If she resets the watch fully to each postcard, she inherits the postman's five-minute wobble every single day, and she learns nothing about the watch's gaining rate. If she ignores the postcards, the watch's ramp and parabola run free. So she does the intelligent middle thing, and it has two distinct parts, which I will separate carefully because they will become two separate components of the circuit.
+
+**Part one: she trims the rate, not the reading.** Her watch has a small regulator lever that makes it run slightly faster or slower. Instead of yanking the hands, she nudges the lever. A rate nudge is gentle: it changes the watch's future by a slope, not a step, so her time never jumps and never runs backward.
+
+**Part two: she nudges in proportion to the discrepancy, by a deliberately small fraction, every day.** Say she trims the rate by one percent of each day's discrepancy. A single freak postman delay of five minutes then moves her rate almost imperceptibly, and is mostly cancelled by the opposite freak delay a week later. But a persistent discrepancy, one that shows up day after day because it is real, gets nudged in the same direction day after day and steadily corrected. Do you see what the small fraction is? **It is averaging, performed one installment at a time.** A correction that responds at one percent per day is effectively responding to the average of roughly the last hundred postcards, so the postman noise that reaches her watch is not $\sigma$ but roughly $\sigma/\sqrt{100}$. She never computes an average explicitly. The sluggishness of her response computes it for her.
+
+The fraction is a knob, and it is the single most consequential knob in this entire subject, so give it a name now: the **loop bandwidth**, or equivalently its reciprocal, the **time constant**. Trim aggressively (large fraction, high bandwidth, short time constant) and you track the watch's genuine drift quickly but average few postcards, letting postman noise through. Trim timidly (small fraction, low bandwidth, long time constant) and you average hundreds of postcards, crushing the noise, but the watch's own drift has all that time to grow unopposed between effective corrections. **The time constant decides which timescales are governed by the watch and which by the postcards: shorter than the time constant, you are living on the watch; longer, on the averaged postcards.** The best setting is not a matter of taste, and the worked example will compute it: it is the timescale at which the watch's growing error and the postcards' shrinking averaged error cross.
+
+One refinement completes the story. After months of this, the keeper notices her logbook of rate nudges has itself been drifting in one direction, because the watch's gain rate keeps creeping. So she adds a second, even slower habit: she keeps a running tally of all nudges ever made, and treats the tally as her best standing estimate of the watch's rate error, applying it continuously even on days the postman never comes. Now if the postman falls ill for a month, her watch does not revert to its factory ignorance. It coasts on the learned rate, and only the not-yet-learned residue of the drift accumulates. **The tally is the system's memory, and the memory is where the mechanism's holdover performance lives.**
+
+## 11. The analogy transcribed: the phase-locked loop
+
+The circuit that is this story, transcribed element for element, is the **phase-locked loop**, or PLL. It has exactly three parts, matching the keeper's three actions.
+
+The **phase detector** is the comparison at the moment of handoff. It takes two inputs, the reference event and the local clock, and outputs their phase difference: the discrepancy. In an analog radio PLL it is a mixer or an XOR gate; in a timing system it is usually a timestamp subtraction: a hardware capture register grabs the local counter's value at the instant the reference pulse's edge arrives, and firmware subtracts the expected value. Its output is one noisy number per reference event: true phase error plus reference jitter.
+
+The **loop filter** is the keeper's policy: the small fraction plus the running tally. In its standard form it is a **PI controller** (proportional-integral): the correction it emits is a small constant times the current discrepancy (the proportional term: her one percent nudge) plus a small constant times the accumulated sum of all discrepancies (the integral term: her tally). The proportional term steers phase; the integral term learns frequency. A loop containing this integrator is called a second-order, type-2 loop, and the type-2 property is precisely the keeper's coasting trick: at equilibrium, the integrator's stored value equals the crystal's actual fractional frequency error, discovered from history, and it keeps correcting even when the current discrepancy reads zero, and even when discrepancies stop arriving at all. **After lock, open the box and look at the integrator: the number sitting in it IS the measurement of your crystal's frequency error, distilled from every pulse the loop has ever seen.**
+
+The **controlled oscillator** is the wristwatch with its regulator lever: an oscillator whose frequency accepts a correction input. In hardware it is a VCXO (voltage-controlled crystal oscillator) or a plain crystal warped slightly by a DAC-driven varactor; in an FPGA or microcontroller it is often purely numerical, an **NCO** (numerically controlled oscillator): an adder that accumulates a programmable increment every cycle, so that trimming the increment trims the rate with no analog parts at all, exactly the rate-not-reading discipline the keeper insisted on.
+
+Here is the full transcription in one table, with the third column pinned to the concrete system this document is ultimately for: a microcontroller-based node disciplining its clock to GPS.
+
+| Lighthouse | PLL element | In a GPS-disciplined MCU/FPGA node |
+|---|---|---|
+| Wristwatch | Free-running local oscillator | TCXO/OCXO feeding the MCU or FPGA clock tree |
+| Postcard at noon | Reference event | GPS receiver's 1 PPS pulse (one pulse per second) |
+| Postman's variable ride | Reference jitter, white, zero-mean | ~15 ns RMS per-pulse GPS timing noise |
+| Comparing watch to postcard | Phase detector | Timer input-capture latching the local counter on the PPS edge |
+| The day's discrepancy | Phase error sample | Captured count minus expected count |
+| One-percent rate nudge | Proportional term | K_p × phase error, applied to the rate |
+| Running tally of all nudges | Integral term | Accumulated correction: the learned frequency error |
+| Regulator lever | Controlled oscillator | DAC to a VCXO, or trim of an NCO increment |
+| Nudge fraction / her sluggishness | Loop bandwidth / time constant | The K_p, K_i choice: effective averaging window |
+| Coasting when the postman is ill | Holdover | Free-run on the integrator's learned rate during GPS loss |
+
+Every property we promised now falls out mechanically. The output comes only from the local oscillator, so it is smooth at short timescales and never jumps or reverses. The reference reaches the output only through the loop filter's sluggishness, so what steers the clock is effectively the average of the last (time constant) worth of pulses, jitter discounted by the full $1/\sqrt{N}$. And the integrator holds the learned rate, so dropout is degradation, not amnesia. There is one honest complication the analogy hides, worth naming: a loop is a feedback system, and feedback systems tuned too aggressively can overshoot and oscillate, chasing their own tail. Loop design (the ratio of K_p to K_i, expressed as a damping factor, conventionally set near 1) is the small body of control theory that keeps the keeper from becoming so jumpy that her corrections themselves become the disturbance. The fine print returns to this.
+
+Vocabulary hooks, because you own several instances of this machine already: every radio receiver that "locks onto" a station carrier does it with a PLL; every microcontroller that multiplies an 8 MHz crystal up to a 160 MHz core clock does it with a PLL whose divided output is phase-compared against the crystal; and the spinning-frequency control in a hard drive, the color decoding in old television, and the bit recovery in every serial link you have ever used are all this same three-part machine with different postmen.
+
+---
+
+## 12. A worked numerical example: choosing the crossover and watching the loop run
+
+Time to run the machine with real numbers. Our parts bin: an OCXO whose short-term purity is parts in $10^{12}$ but which drifts, through aging and residual temperature sensitivity, by about $1 \times 10^{-10}$ per day in fractional frequency; and a GPS receiver emitting one pulse per second with $\sigma = 15$ ns of white, zero-mean jitter per pulse.
+
+**Step one: how well can the postcards measure frequency, as a function of patience?** The cleanest frequency measurement over an interval $\tau$ uses the first and last pulse: frequency error = (phase error at end − phase error at start) / $\tau$. Each endpoint carries 15 ns of independent noise; independent σs add in square, so the numerator wobbles by 15$\sqrt{2}$ ≈ 21 ns regardless of $\tau$, and the frequency estimate wobbles by 21 ns / $\tau$. Patience divides the noise. (Using all the intermediate pulses in a least-squares fit improves this by a further modest square-root factor; the endpoint version keeps the arithmetic honest and by-hand.)
+
+**Step two: how badly does the crystal misbehave over the same interval?** Drift of $1 \times 10^{-10}$ per day is $1.2 \times 10^{-15}$ per second of elapsed time, so over an averaging interval $\tau$ the crystal's own frequency typically slides by about $1.2 \times 10^{-15} \times \tau$. Patience multiplies this error. The two trends run in opposite directions, and their crossing is the whole design.
+
+| Averaging interval $\tau$ | GPS frequency noise (21 ns / $\tau$) | Crystal frequency slide (1.2e-$15 \times \tau$) | Who is limiting? |
+|---|---|---|---|
+| 1 s | $2.1 \times 10^{-8}$ | $1.2 \times 10^{-15}$ | GPS noise, overwhelmingly |
+| 10 s | $2.1 \times 10^{-9}$ | $1.2 \times 10^{-14}$ | GPS noise |
+| 100 s | $2.1 \times 10^{-10}$ | $1.2 \times 10^{-13}$ | GPS noise |
+| 1,000 s | $2.1 \times 10^{-11}$ | $1.2 \times 10^{-12}$ | GPS noise, barely |
+| 4,000 s | $5.3 \times 10^{-12}$ | $4.8 \times 10^{-12}$ | **The crossover** |
+| 10,000 s | $2.1 \times 10^{-12}$ | $1.2 \times 10^{-11}$ | Crystal drift |
+| 100,000 s | $2.1 \times 10^{-13}$ | $1.2 \times 10^{-10}$ | Crystal drift, badly |
+
+Read the table twice, because it contains the punchline's arithmetic. Averaging for less than about an hour, you are still paying GPS jitter. Averaging for much more than an hour, the crystal has drifted out from under your measurement before you finish making it. The optimum time constant is near the crossing, roughly 4,000 seconds, about an hour, and there the disciplined oscillator's fractional frequency error is about $5 \times 10^{-12}$. Over a day, honesty errors at and beyond the time constant are continually re-measured and corrected, and the standard result (which you can now sanity-check yourself: ~10 ns of averaged-down timing wobble spread over 86,400 s is ~$1.2 \times 10^{-13}$) is that a well-tuned GPSDO holds time to roughly 10 ns per day, parts in $10^{12}$ to $10^{13}$. That is the preface's claim, earned. A cheaper TCXO with faster drift would cross the GPS line earlier, around 100 s, and settle in the $10^{-10}$ range: the better your crystal, the more patience it can afford, and the more of the $\sqrt{N}$ discount it can collect. **The quality of the local oscillator determines how much averaging you are allowed, and the averaging determines the final accuracy. The two ingredients multiply; they do not merely add.**
+
+**Step three: watch six postcards move the loop.** To feel the mechanism, run a deliberately toy version by hand: time constant of ~5 updates (so K_p = 0.2, and K_i = 0.01 of each discrepancy into the tally), a local clock starting with a frequency error that adds +8 ns to its phase error every update, and reference pulses whose jitter we script: +12, −5, +9, −14, +3, +7 ns.
+
+| Update | True phase err before (ns) | Jitter (ns) | Measured discrepancy (ns) | P nudge (ns/update) | Tally I (ns/update) | Rate correction now (ns/update) |
+|---|---|---|---|---|---|---|
+| 1 | +8.0 | +12 | +20.0 | −4.0 | −0.20 | −4.2 |
+| 2 | +11.8 | −5 | +6.8 | −1.4 | −0.27 | −1.6 |
+| 3 | +18.0 | +9 | +27.0 | −5.4 | −0.54 | −5.9 |
+| 4 | +19.5 | −14 | +5.5 | −1.1 | −0.59 | −1.7 |
+| 5 | +25.2 | +3 | +28.2 | −5.6 | −0.88 | −6.5 |
+| 6 | +26.0 | +7 | +33.0 | −6.6 | −1.21 | −7.8 |
+
+(Each row: phase error grows by +8 from the frequency error, minus the previous row's rate correction; the measured value is truth plus that update's jitter.) Six updates is far too short for lock, and that is the point of showing it: notice that the proportional nudges thrash up and down with the jitter (−4.0, −1.4, −5.4, −1.1...), exactly the noise passing through at reduced strength, while the tally in the I column crawls monotonically toward the true frequency error of −8, ignoring the thrash, one small installment per postcard. Run this spreadsheet for a few hundred updates and the tally converges to −8.0 ± the averaged jitter, the phase error settles around zero, and cutting off the postcards at any point leaves the clock coasting with only the tally's small residual error. Every behavior claimed in Part II is visible in eight columns of arithmetic.
+
+That spreadsheet, running. Step one postcard at a time to watch the proportional term thrash while the tally crawls toward the truth, then cut the reference off and see what the loop actually learned.
+
+<PllSimulator />
+
+## 13. The deep part: where the accuracy actually lives
+
+Here is the accounting question that should be nagging you. The final clock is good to parts in $10^{12}$. The crystal never was: free-running, it is a parts-in-$10^{6}$ device dressed up with an oven. No single GPS pulse ever was: 15 ns on a one-second interval is parts in $10^{8}$. We are claiming the output is ten thousand times better than the best thing anyone ever measured. Where is that accuracy physically located? What object holds it?
+
+Trace it and there is only one candidate. It is not in the quartz; unplug the antenna for a month and the quartz reverts toward its native drift, so the quartz never contained it. It is not in any pulse or any postcard; each was and remains 15 ns dirty. **The accuracy lives in the accumulated history of corrections: in the integrator's tally, a number distilled from hundreds of thousands of individually mediocre measurements whose errors, being white, were legally obligated to cancel.** The crystal contributes a different asset: not accuracy but coherence, the ability to hold still while the evidence accumulates. Think of long-exposure photography of a dim galaxy: the sensor supplies no light of its own, but it must hold perfectly still for hours while photons trickle in; the image lives in the accumulation, and the mount's stillness is what makes accumulation meaningful. The crystal is the tracking mount of the time domain. The GPS pulses are the photons. **Stability is the license to integrate, and integration is where accuracy comes from.**
+
+This is also the moment to hand you the field's standard instrument for making all of this quantitative, because you will meet it on the first page of every oscillator datasheet: the **Allan deviation** (ADEV), invented by David Allan at the National Bureau of Standards in 1966. The obvious statistic, the ordinary standard deviation of a clock's frequency readings, turns out to diverge for real oscillators: because of drift and flicker, the longer you observe, the bigger the "standard deviation" grows, without converging to anything, so it cannot honestly summarize a clock. Allan's fix is disarmingly simple: measure the average frequency in consecutive intervals of length $\tau$, and report the typical difference between one interval and the next. That two-sample difference cancels the slow wander that poisoned the ordinary statistic, and it produces a function of $\tau$ rather than a single number, which is exactly what our subject demands, because we have seen repeatedly that a clock has no single quality: it has a quality at each timescale.
+
+Plot ADEV against $\tau$ on log-log axes and every oscillator draws a U shape (more precisely a checkmark, often with a flat bottom). On the left, white noise dominates and the curve falls as you average longer (for white phase noise, as 1/$\tau$, our 21 ns/$\tau$ line exactly). At the bottom sits the **flicker floor**, a plateau where averaging has stopped paying, previewed in section 5 and settled in the fine print. On the right, drift and random walk take over and the curve climbs. Now everything in this document becomes one picture: draw the crystal's ADEV curve and the reference's ADEV curve on the same axes, and they cross. Left of the crossing, the crystal is the better clock; right of it, the averaged reference is. **A disciplined oscillator is a machine for tracing the lower envelope of the two curves, and the loop time constant is nothing but the crossing point, chosen on purpose.** Our worked example's table was two columns of exactly these curves, and "4,000 seconds" was where they crossed. When a datasheet shows you an ADEV plot, it is showing you where its product is allowed to be the boss, and for how long.
+
+## 14. The real-world instances: TSF, GPSDO, clock recovery, and White Rabbit
+
+The abstract story is done. Now we pin it, hard, to the specific systems this document was requested for, in ascending order of ambition.
+
+**WiFi TSF synchronization (microsecond class).** Every 802.11 device maintains a TSF, the Timing Synchronization Function: a 64-bit counter incrementing once per microsecond, so q = 1 µs is the quantization grid. Access points broadcast beacons roughly every 100 ms, and the hardware stamps the TSF value into the beacon at the instant of transmission, and captures the local TSF at the instant of reception, both in silicon, below the operating system's jittery software layers. Recognize the anatomy: the beacon timestamp exchange is the postcard, the pair of hardware captures is the phase detector, and the 1 µs counter grid plus radio and hardware path wobble is the postman. A single beacon comparison can never beat the grid: one raw reading carries the $q/\sqrt{12}$ ≈ 0.29 µs quantization noise at minimum. But the true offset between two devices drifts continuously through the grid as their crystals slide past each other, which is precisely the "lively signal" condition of section 6 that makes quantization error behave as white, averageable noise, nature supplying the dither for free. A loop filtering many beacons therefore syntonizes and synchronizes two nodes down to about the single-tick level, 1 µs, which is the honest floor of the interface rather than of the physics; the physics, as the next instances show, has another six orders of magnitude to give. Note also what the loop's integrator holds here: the learned relative frequency error between the two crystals, which is what keeps the nodes aligned across the 100 ms gaps between postcards.
+
+**The GPSDO (nanosecond class).** The GPS-disciplined oscillator is the worked example of section 12 made product: OCXO, receiver, phase detector on the PPS edge, PI filter with a time constant of minutes to hours, holdover on the integrator. Two details from real receivers reward the theory. First, the receiver's own PPS edge is quantized to the receiver's internal clock grid, and manufacturers, knowing exactly the lesson of section 6, report each pulse's individual rounding error in a message alongside the pulse (u-blox calls it the quantization error field), so the discipline loop can subtract the grid before averaging: quantization made visible and refunded. Second, receivers in fixed installations offer a survey-in mode: they average their own position for a day, then freeze it, converting position uncertainty (which would leak into timing as bias) into a constant that cancels. Both are the zero-mean discipline of section 4 being enforced by hand: hunt every bias, because averaging will not do it for you.
+
+**Clock recovery (the postman with no postcards).** Every serial data link, from gigabit Ethernet to the SERDES transceivers in an FPGA, faces a stranger version of our problem: the receiver must sample incoming bits at the transmitter's rate and phase, but no clock wire is provided. The insight is that the data is its own clock: every transition between 0 and 1 in the incoming waveform happens on the transmitter's time grid, so the transitions are reference events, postcards mailed implicitly and constantly. A **clock and data recovery** (CDR) circuit is a PLL whose phase detector fires only on data transitions, steering a local oscillator until its edges sit centered between the incoming ones; the loop's averaging over thousands of transitions per microsecond crushes the per-edge jitter exactly per $\sqrt{N}$. The one obligation this creates is transition density: a long run of unbroken 1s starves the phase detector, the loop coasts on its integrator (holdover, again), and eventually drifts. So line codes exist to guarantee postcards: 8b/10b coding, scramblers, Manchester encoding are all contracts promising the CDR a minimum diet of transitions. The keeper's story, told with the postman replaced by inferring the observatory's schedule from the regular rhythm of traffic past her window.
+
+**White Rabbit (picosecond class).** CERN's White Rabbit, developed by Javier Serrano's team from 2008 onward and since absorbed into the IEEE 1588-2019 standard's High Accuracy profile, distributes time over ordinary optical fiber with sub-nanosecond accuracy and jitter measured in picoseconds, and it is a masterclass in stacking every mechanism in this document.
+
+First, it makes every link syntonized by construction: using Synchronous Ethernet, each node's transmit clock is not free-running but is the CDR-recovered clock of its upstream link, so a single master oscillator's frequency flows physically down the entire network; there is no frequency error left to learn, only phase.
+
+Second, having removed frequency error, it measures phase with a technique that should feel familiar to anyone who has used a vernier scale: the **digital dual mixer time difference** (DDMTD). To compare two clocks near 62.5 MHz, it samples both with a helper clock deliberately offset by one part in $2^{14}$. The samples beat, producing a slow replica of the phase relationship stretched in time by a factor of 16,384, so that counting the beat with ordinary logic resolves picoseconds, the same move as a vernier's almost-matching rulings converting a tiny displacement into a gross, readable one. The beat-edge readings still carry noise from the sampling flip-flops' thermal jitter, and White Rabbit averages them, per $\sqrt{N}$, as is now tradition.
+
+Third, it solves the problem all of the above quietly ignored: the postman's average delay. Over a fiber link the reference arrives late by the propagation time, a bias, invisible to averaging, of five microseconds per kilometer. White Rabbit measures it with a round trip: timestamps on both ends of both directions of the same fiber yield the total out-and-back delay, and, because both directions share one fiber, dividing by two gives the one-way delay to sub-nanosecond fidelity (after a small correction for the two laser wavelengths traveling at slightly different speeds in the glass). Bias defeated by symmetry, not by statistics; the fine print says more about that.
+
+The stack, then: SyncE clock recovery delivers frequency, round-trip time transfer delivers the bias, DDMTD delivers fine phase, loops average everything white, and a nanosecond-grade counter plus the PTP protocol's coarse timestamps resolves which cycle is which. Each layer is one section of this document, industrialized.
+
+## 15. The fine print
+
+No free lunch is being served here, so let us name the currency and the places where the kitchen runs out of it.
+
+**The trick spends independence, and independence is not infinite.** The $1/\sqrt{N}$ discount is honored only while errors keep being new. Real error sources eventually repeat themselves: GPS multipath (signals bouncing off nearby structures before reaching the antenna) produces errors correlated over minutes and over the satellite geometry's repeat period; temperature drives both the crystal and the receiver in slow, self-similar patterns. Beneath all of it lies **flicker noise**, the mysterious 1/f process present in essentially every physical device, whose power density rises as frequency falls, so that unlike white noise it does not thin out as you narrow bandwidth: averaging longer keeps meeting proportionally more of it, and the $\sqrt{N}$ stalls. This is the flat bottom of every ADEV curve, the flicker floor, and it is the hard boundary of the entire strategy: **averaging buys accuracy only down to the first noise process that has memory**. Good OCXOs floor near $10^{-13}$; the trick's job is to ride $\sqrt{N}$ from parts per million down to that floor, not through it.
+
+**Averaging is blind to bias, so every bias must be hunted individually.** Antenna cable delay (about 5 ns per meter), receiver processing offsets, asymmetries between the two directions of a network path: each passes through any amount of averaging untouched. NTP over the open internet is stuck at milliseconds not because of jitter, which it averages away, but because the forward and return paths through routers are unequally congested, an unmeasurable asymmetric bias. White Rabbit's single-fiber round trip is a bias-hunting weapon, not a noise-averaging one, and the residual wavelength asymmetry it corrects for is exactly the kind of remainder that separates nanoseconds from picoseconds.
+
+**The loop is a feedback system and can be mistuned in both directions.** Bandwidth too high: reference jitter passes through and the crystal's short-term purity is squandered; in the limit you have rebuilt naive approach two. Too low: crystal drift is corrected too slowly and grows between effective corrections; in the limit, naive approach one's mirror image. And with the integral term comes the standard hazard of stored corrections: wind-up and overshoot, the keeper trimming so hard that her corrections become the disturbance, which is why loops are designed with damping near critical and why the integrator is often clamped during dropout.
+
+**Holdover is coasting, not immunity.** The integrator remembers the frequency that was, not the frequency that will be. During GPS loss the clock accumulates error from whatever drift occurred after the last update, which is why holdover specs are quoted in microseconds per day and why holdover quality is purely a function of how good, thermally and in aging, the local oscillator is. The reference can also lie: GPS jamming and spoofing are the failure mode where the postcards themselves are forged, and serious installations cross-check against a second reference (Rb, a second constellation, a network peer) precisely because the loop, by design, trusts the average of its postcards.
+
+**Why does timing, of all fields, have the currency in surplus?** Because the reference ticks forever and costs nothing per tick. A GPS receiver hands you 86,400 independent measurements a day, every day, for the price of an antenna on the roof; few fields get to buy statistical power that cheaply. And because the quantity being measured, phase, is confined by the loop itself to a tiny range around zero, the linear, well-behaved regime where all of this analysis is honest. The trick thrives here because timing is the rare domain with unlimited repetition, mostly-white noise, and a stable thing to hold still while the evidence accumulates.
+
+## 16. The idea underneath the idea
+
+Zoom all the way out. The pattern is: **fuse a source that is smooth but drifts with a source that is noisy but honest, splitting responsibility by timescale, with the crossover placed where their error curves intersect**. Control theorists call the general form a complementary filter; statisticians, when the blend is re-derived optimally at every step from the noise statistics, call it a Kalman filter, and a GPSDO's PI loop is precisely a Kalman filter for this problem frozen at its steady-state gains. Once you can see the shape, it is everywhere:
+
+An **audio crossover** splits a signal between a tweeter (fast, clean, no low-end authority) and a woofer (powerful, slow), each operating only in the band where it is the better transducer; the loop bandwidth of a GPSDO is, quite literally, a crossover frequency between quartz and cesium. **Inertial navigation** in every phone, drone, and airliner fuses gyroscopes and accelerometers (smooth, hundreds of updates per second, integrate into position, drift without bound) against GPS fixes (jittery, slow, honest), the identical marriage with position in place of phase; an FPV drone's attitude estimate is a complementary filter fusing a drifting gyro against a noisy gravity vector at a few hundred hertz. **Astrophotography stacking** holds a mount still (coherence) while hundreds of noisy subframes average per $\sqrt{N}$ into one deep image; the mount is the crystal, the photons are the postcards. **Sensor baselines in metrology** discipline a cheap working instrument against occasional calibrations from a standards lab: the working gauge is the crystal, the lab is the cesium, the calibration interval is the time constant. An **index fund** holds many independent noisy assets so the portfolio's wobble shrinks per $\sqrt{N}$ while systematic market drift, the bias, passes straight through, which is exactly why diversification cannot save you from the market itself. And **marine navigation before radio** ran the whole architecture by hand: John Harrison's chronometer (smooth, drifting seconds per month) disciplined by noon sun sights (each fix noisy by miles, but zero-mean), with the navigator's logbook of accumulated chronometer rate corrections serving, literally, as the integrator.
+
+The history has a satisfying shape. The feedback loop came first: Henri de Bellescize published the phase-locked loop in 1932 in France, for radio receivers that needed a local oscillator locked to a distant station's carrier, a reference arriving weak and noisy over the air. It then waited. For three decades the PLL stayed exotic, because it took a dozen vacuum tubes to build and there were cheaper ways to receive radio; the inversion that changed everything was the integrated circuit, which around 1970 (the CMOS 4046 is the totemic part) collapsed the whole three-element machine into a component costing less than a capacitor, whereupon PLLs colonized television color decoding, frequency synthesis, disk drives, and every serial link on earth. The statistics came second, and for a parallel reason: David Allan's 1966 variance was invented at NBS because the new atomic clocks were the first oscillators good enough to expose flicker noise's refusal to average, breaking the classical statistics that had been adequate for pendulums; the tool waited until instruments outran the mathematics. And the modern synthesis waited for a third inversion: White Rabbit exists because by 2008 commodity gigabit Ethernet had made picosecond-grade transceivers, CDR circuits, and FPGA logic so cheap that CERN could ask for sub-nanosecond time as a software-defined feature of an ordinary network, rather than as a rack of purpose-built instruments. Each generation of the idea was unlocked not by new theory but by some previously precious ingredient, tubes, then transistors, then serial bandwidth, becoming too cheap to meter. The averaging was always willing; the world had to make postcards cheap.
+
+# Appendix: Glossary
+
+- **Oscillator**: a device producing a repeating signal at (ideally) constant frequency.
+- **Frequency**: cycles per second, in hertz (Hz).
+- **Period**: duration of one cycle; the reciprocal of frequency.
+- **Phase**: accumulated position within and across cycles; the total angle turned since t = 0.
+- **Synchronized**: agreeing in phase (and hence time). **Syntonized**: agreeing in frequency only.
+- **Fractional frequency error (y)**: frequency error divided by nominal frequency; dimensionless (ppm = $10^{-6}$, ppb = $10^{-9}$).
+- **Q factor**: roughly, how many cycles a resonator rings before decaying; higher Q, more stubborn frequency.
+- **Piezoelectricity**: coupling between mechanical strain and voltage in certain crystals, quartz included.
+- **Free-running**: an oscillator operating with no external correction.
+- **TCXO / OCXO**: temperature-compensated / oven-controlled crystal oscillator.
+- **Rubidium (Rb) standard**: crystal disciplined to an atomic transition of rubidium; parts in $10^{11}$ class.
+- **Aging**: slow, monotonic frequency drift of a crystal over its life.
+- **Mean / variance / standard deviation ($\sigma$)**: center of a random quantity; average squared spread; its square root, in natural units.
+- **Zero-mean**: random error with no systematic lean. **Bias**: the systematic lean itself; immune to averaging.
+- **Independence**: one error carrying no information about the next.
+- **White noise**: noise with a flat power spectral density; the frequency-domain form of independent samples.
+- **Power spectral density (PSD)**: noise power per hertz of bandwidth; amplitude form has units like $\text{V}/\sqrt{\text{Hz}}$ or $\text{ns}/\sqrt{\text{Hz}}$.
+- **Bandwidth**: the width, in Hz, of the frequency range a system responds to.
+- **Flicker (1/f) noise**: noise whose density grows as frequency falls; has memory; sets the floor that averaging cannot pass.
+- **Sampling**: measuring a signal only at discrete times. **Nyquist criterion**: sampling at more than twice the highest signal frequency loses nothing.
+- **Quantization**: rounding a measurement to a grid of step q; RMS error $q/\sqrt{12}$ when the signal is lively.
+- **Dither**: noise added on purpose to keep quantization errors zero-mean, white, and hence averageable.
+- **Jitter**: random timing error of an edge or timestamp; quantization's sibling on the time axis.
+- **Phase detector**: circuit or code producing the phase difference between reference and local clock.
+- **Loop filter / PI controller**: policy converting phase error into rate correction; proportional term steers phase, integral term learns frequency.
+- **VCXO / NCO**: voltage-controlled crystal oscillator / numerically controlled oscillator; the trimmable timebase.
+- **PLL (phase-locked loop)**: phase detector + loop filter + controlled oscillator in feedback.
+- **Loop bandwidth / time constant**: the responsiveness of the loop; equivalently, the effective averaging window; equivalently, the timescale dividing local-oscillator authority from reference authority.
+- **Damping**: loop tuning parameter controlling overshoot; conventionally near 1.
+- **Lock**: the steady state in which the loop holds phase error near zero.
+- **Holdover**: coasting on the integrator's learned rate when the reference disappears.
+- **Jam sync**: forcibly setting the clock to each reference reading; passes jitter through, learns nothing.
+- **GPSDO**: GPS-disciplined oscillator.
+- **1 PPS**: one pulse per second; the standard timing output of a GNSS receiver.
+- **Survey-in**: a fixed receiver averaging its own position, then freezing it, to convert position error into a cancelable constant.
+- **Allan deviation (ADEV)**: two-sample frequency stability statistic, as a function of averaging time $\tau$; the standard clock-quality curve.
+- **Flicker floor**: the flat bottom of an ADEV curve, where averaging stops paying.
+- **TSF**: WiFi's Timing Synchronization Function; a 64-bit, 1 MHz (1 µs grain) counter with hardware-timestamped beacons.
+- **CDR (clock and data recovery)**: a PLL that recovers a transmitter's clock from data transitions alone.
+- **Line code / 8b10b / scrambler**: encodings guaranteeing transition density so a CDR never starves.
+- **SyncE (Synchronous Ethernet)**: distributing frequency physically by making each node's transmit clock the recovered clock of its upstream link.
+- **DDMTD**: digital dual mixer time difference; a beat-frequency (vernier-style) phase detector resolving picoseconds with slow logic.
+- **PTP / IEEE 1588**: the packet protocol for exchanging timestamps over networks; White Rabbit is its High Accuracy profile.
+- **Round-trip time transfer**: measuring out-and-back delay on one path and halving it, defeating propagation bias by symmetry.
+- **Holdover spec**: guaranteed maximum time error accumulated over a stated interval with the reference lost.
+- **Complementary / Kalman filter**: the general blend-by-timescale of a smooth drifting source with a noisy honest one; the PLL's family.
