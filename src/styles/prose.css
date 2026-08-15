@@ -500,6 +500,94 @@ h4:hover > .heading-anchor,
   height: 270px;
 }
 
+.demo__canvas--adev {
+  height: 240px;
+  margin-top: 1rem;
+}
+
+/* ------------------------------------------------------------ symbol key */
+
+.key {
+  margin: 0 0 1rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.key > summary {
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.key > summary:hover {
+  color: var(--accent);
+}
+
+.key .table-wrap {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: transparent;
+}
+
+.key__table {
+  font-size: 0.78rem;
+}
+
+.key__table td {
+  vertical-align: top;
+  font-variant-numeric: normal;
+}
+
+.key__symbol {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.key__story {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.key__unit {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------- control group labels */
+
+.demo__group {
+  margin: 0.55rem 0 -0.1rem;
+  font-size: 0.66rem;
+  font-weight: 680;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.demo__group:first-child {
+  margin-top: 0;
+}
+
+.demo__note--caveat {
+  padding: 0.7rem 0.85rem;
+  border-left: 2px solid var(--rule-strong);
+  background: var(--bg-sunken);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 0.78rem;
+}
+
 /* Holdover is a state worth seeing at a glance, not only reading. */
 .demo[data-cut="true"] {
   border-color: var(--accent);
@@ -720,6 +808,19 @@ h4:hover > .heading-anchor,
   font-size: 0.74rem;
   line-height: 1.4;
   color: var(--text-faint);
+}
+
+/* The same step, said in words, with this update's numbers in it. */
+.chain__plain {
+  font-family: var(--font-prose);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+.chain__row[data-just="true"] .chain__plain {
+  color: var(--text);
 }
 
 .chain__maths {

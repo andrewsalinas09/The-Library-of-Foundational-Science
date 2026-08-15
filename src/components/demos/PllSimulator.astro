@@ -2,26 +2,20 @@
 import katex from "katex";
 
 /**
- * The lighthouse keeper's loop, running.
+ * The lighthouse keeper's loop, running, with a real noise budget.
  *
- * The document's six-postcard table is too short to show the thing it claims:
- * that the proportional term thrashes with the jitter while the integrator's
- * tally crawls monotonically toward the crystal's true frequency error. A few
- * hundred updates make that obvious, and cutting the reference off mid-run
- * turns the tally from an abstraction into the thing the clock coasts on.
+ * An earlier version modelled only the postman's jitter and treated the
+ * crystal as noiseless. That version could not produce an Allan deviation
+ * curve at all, which meant it could not demonstrate sections 12 and 13, the
+ * document's central quantitative claim. The local oscillator now has white,
+ * flicker, and random-walk frequency noise plus aging, so the two error curves
+ * genuinely cross and the loop time constant genuinely has an optimum.
  *
- * Arithmetic and sign conventions are exactly the document's:
+ * One update is one postcard, taken as one second, so a rate expressed in
+ * ns/update is a fractional frequency of that many parts in 10^9.
  *
- *   e = phi + n        measured discrepancy: true phase error plus jitter
- *   p = -Kp * e        proportional nudge
- *   I = I - Ki * e     the tally, which converges to -r
- *   y = p + I          rate correction applied this update
- *   phi = phi + r + y  coast to the next postcard
- *
- * Equations are typeset here at build time and ship as plain HTML; only the
- * numeric substitutions are generated at runtime. `is:inline` is required
- * because Astro does not hoist bundled component scripts through
- * content-collection MDX.
+ * `is:inline` is required: Astro does not hoist bundled component scripts
+ * through content-collection MDX.
  */
 
 const tex = (source: string) =>
@@ -30,29 +24,36 @@ const tex = (source: string) =>
 const STAGES = [
   {
     name: "Measure",
-    blurb: "The postcard arrives. What you read is the truth plus the postman.",
     equation: tex("\\varepsilon_k = \\phi_k + n_k"),
   },
   {
     name: "Proportional",
-    blurb: "A deliberately small fraction of today's discrepancy.",
     equation: tex("p_k = -K_p\\,\\varepsilon_k"),
   },
   {
     name: "Integrate",
-    blurb: "The running tally of every nudge ever made. This is the memory.",
     equation: tex("I_k = I_{k-1} - K_i\\,\\varepsilon_k"),
   },
   {
     name: "Steer",
-    blurb: "Trim the rate, never the reading, so time never jumps.",
     equation: tex("y_k = p_k + I_k"),
   },
   {
     name: "Coast",
-    blurb: "Free-run to the next postcard on the corrected rate.",
-    equation: tex("\\phi_{k+1} = \\phi_k + r + y_k"),
+    equation: tex("\\phi_{k+1} = \\phi_k + r_k + y_k"),
   },
+];
+
+const KEY = [
+  ["φ", "phase error", "how far the clock is from true time", "how wrong the watch is right now", "ns"],
+  ["n", "reference jitter", "the random error in this one measurement", "the postman's headwind or tailwind today", "ns"],
+  ["ε", "discrepancy", "what you actually measure: the truth plus the jitter", "what today's postcard appears to say", "ns"],
+  ["p", "proportional nudge", "a small fraction of today's discrepancy", "the keeper's one percent trim", "ns/update"],
+  ["I", "the tally", "everything the loop has learned about the rate", "the logbook of every nudge ever made", "ns/update"],
+  ["y", "correction", "the rate actually applied this update", "where the regulator lever sits", "ns/update"],
+  ["r", "crystal rate error", "how fast the clock really gains, noise and all", "the watch gaining a second and a half a day", "ns/update"],
+  ["τ", "loop time constant", "how sluggish the loop is; how many postcards it effectively averages", "how timid the keeper is", "updates"],
+  ["σ_y(τ)", "Allan deviation", "how unstable a clock is when measured over intervals of length τ", "how much the watch's rate wanders", "dimensionless"],
 ];
 ---
 
@@ -68,17 +69,42 @@ const STAGES = [
     </div>
   </div>
 
+  <details class="key" open>
+    <summary>What every symbol means</summary>
+    <div class="table-wrap">
+      <table class="key__table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Name</th>
+            <th>In plain words</th>
+            <th>In the lighthouse story</th>
+            <th>Unit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {KEY.map((row) => (
+            <tr>
+              <td class="key__symbol">{row[0]}</td>
+              <td>{row[1]}</td>
+              <td>{row[2]}</td>
+              <td class="key__story">{row[3]}</td>
+              <td class="key__unit">{row[4]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </details>
+
   <canvas class="demo__canvas demo__canvas--tall" data-role="canvas"></canvas>
 
   <div class="demo__readouts">
-    <div><span>Postcard</span><strong data-out="pulse">0</strong></div>
+    <div><span>Postcard k</span><strong data-out="pulse">0</strong></div>
     <div><span>Phase error φ <i>ns</i></span><strong data-out="phase">+0.0</strong></div>
     <div><span>Tally I <i>ns/update</i></span><strong data-out="tally">+0.00</strong></div>
     <div><span>True rate r <i>ns/update</i></span><strong data-out="rate">+8.00</strong></div>
-    <div>
-      <span>Residual I + r <i>ns/update</i></span>
-      <strong data-out="residual">+8.00</strong>
-    </div>
+    <div><span>K<sub>p</sub>, K<sub>i</sub> <i>from τ</i></span><strong data-out="gains">0.200, 0.0100</strong></div>
   </div>
 
   <div class="chain">
@@ -93,7 +119,7 @@ const STAGES = [
           <span class="chain__index">{index + 1}</span>
           <div class="chain__body">
             <p class="chain__name">{stage.name}</p>
-            <p class="chain__blurb">{stage.blurb}</p>
+            <p class="chain__plain" data-plain={index}>&nbsp;</p>
           </div>
           <div class="chain__maths">
             <span class="chain__equation" set:html={stage.equation} />
@@ -105,93 +131,130 @@ const STAGES = [
   </div>
 
   <div class="demo__controls">
+    <p class="demo__group">The reference (the postman)</p>
     <label>
-      <span>Postman jitter σ <i>ns</i></span>
-      <input type="range" data-control="jitter" min="0" max="30" step="0.5" value="10" />
-      <output data-out="jitter-value">10.0</output>
+      <span>Jitter σ <i>ns, one sigma</i></span>
+      <input type="range" data-control="jitter" min="0" max="40" step="0.5" value="15" />
+      <output data-out="jitter-value">15.0</output>
     </label>
 
+    <p class="demo__group">The local oscillator (the wristwatch)</p>
     <label>
-      <span>Crystal rate error r <i>ns/update</i></span>
+      <span>Quality</span>
+      <span class="demo__segmented" data-control="preset">
+        <button type="button" data-preset="tcxo" data-active="true">TCXO</button>
+        <button type="button" data-preset="ocxo">OCXO</button>
+        <button type="button" data-preset="rb">Rubidium</button>
+      </span>
+    </label>
+    <label>
+      <span>Rate error r <i>ns/update</i></span>
       <input type="range" data-control="rate" min="-20" max="20" step="0.5" value="8" />
       <output data-out="rate-value">+8.0</output>
     </label>
 
+    <p class="demo__group">The loop (the keeper's policy)</p>
     <label>
-      <span>Proportional K<sub>p</sub> <i>per update</i></span>
-      <input type="range" data-control="kp" min="0" max="0.8" step="0.01" value="0.2" />
-      <output data-out="kp-value">0.20</output>
+      <span>Time constant τ <i>updates</i></span>
+      <input type="range" data-control="tau" min="2" max="300" step="1" value="10" />
+      <output data-out="tau-value">10</output>
     </label>
-
-    <label>
-      <span>Integral K<sub>i</sub> <i>per update</i></span>
-      <input type="range" data-control="ki" min="0" max="0.08" step="0.001" value="0.01" />
-      <output data-out="ki-value">0.010</output>
-    </label>
-
-    <label>
-      <span>Aging drift <i>ns/update²</i></span>
-      <input type="range" data-control="aging" min="0" max="0.04" step="0.002" value="0" />
-      <output data-out="aging-value">0.000</output>
-    </label>
-
     <label>
       <span>Updates per frame</span>
-      <input type="range" data-control="speed" min="1" max="20" step="1" value="2" />
-      <output data-out="speed-value">2</output>
+      <input type="range" data-control="speed" min="1" max="40" step="1" value="8" />
+      <output data-out="speed-value">8</output>
     </label>
   </div>
 
+  <canvas class="demo__canvas demo__canvas--adev" data-role="adev"></canvas>
+
   <p class="demo__note">
-    <strong>Units.</strong> One update is one postcard. Phase error φ, the
-    postman's jitter n, and the discrepancy ε are all times, in nanoseconds.
-    The proportional nudge p, the tally I, the correction y, and the crystal's
-    error r are all <em>rates</em>, in nanoseconds of phase gained per update,
-    which is why the tally settles at exactly minus r and the two cancel. K<sub
-    >p</sub> and K<sub>i</sub> convert a time into a rate, so they carry units
-    of per-update; aging is a rate of change of a rate, ns/update².
+    <strong>Reading the lower chart.</strong> That is an Allan deviation plot,
+    the standard way to say how good a clock is <em>at each timescale</em>. Left
+    is short intervals, right is long ones; lower is better. The reference falls
+    as you average longer, because its jitter is white. The free-running crystal
+    is excellent briefly and then curves upward as flicker and drift take over.
+    The disciplined output is the loop's attempt to trace the lower envelope of
+    the two, and the vertical line is your time constant τ, which is the
+    crossing point you are choosing. Drag τ short and reference jitter floods
+    the left of the chart; drag it long and the crystal's own drift is left
+    uncorrected. Somewhere between is the minimum.
   </p>
 
   <p class="demo__note">
-    Watch the two lower traces, not the top one. The tally crawls toward
-    <em>minus</em> the crystal's true rate error and stays there, ignoring the
-    thrash, one small installment per postcard. Then press <strong>Cut
-    reference</strong>: the postcards stop, the proportional term goes to zero,
-    and the clock coasts on the tally alone. That is holdover, and what it
-    costs you is exactly the part of the drift the tally had not yet learned.
+    <strong>Units.</strong> One update is one postcard, taken as one second.
+    φ, n and ε are times, in nanoseconds. p, I, y and r are <em>rates</em>, in
+    nanoseconds of phase gained per update, which is why the tally settles at
+    exactly minus r and the two cancel. A rate of 1 ns/update is a fractional
+    frequency of one part in 10<sup>9</sup>. K<sub>p</sub> and K<sub>i</sub>
+    convert a time into a rate and are derived from τ with damping 1, so
+    τ = 10 gives K<sub>p</sub> = 0.2 and K<sub>i</sub> = 0.01, the values in
+    the table above.
+  </p>
+
+  <p class="demo__note demo__note--caveat">
+    <strong>What this does and does not model.</strong> Modelled: white,
+    flicker and random-walk frequency noise in the oscillator, linear aging,
+    white jitter on the reference, a type-2 loop, and holdover. Not modelled:
+    quantisation in the phase detector, multipath and other correlated
+    reference errors, temperature, loop delay, and any bias, which by
+    construction averaging cannot remove anyway. The oscillator presets are
+    illustrative shapes chosen to be legible over a few hundred updates, not
+    datasheet figures for a real part.
   </p>
 </div>
 
 <script is:inline>
   (function () {
-    var HISTORY = 260;
+    var HISTORY = 300;      // samples drawn in the scrolling traces
+    var STATS = 4096;       // samples retained for the Allan deviation
     var STAGE_NAMES = ["Measure", "Proportional", "Integrate", "Steer", "Coast"];
+    var TAUS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
-    function fmt(value, places) {
-      if (value === null || value === undefined) return "—";
-      var text = Math.abs(value).toFixed(places === undefined ? 2 : places);
-      return (value < 0 ? "−" : "+") + text;
+    var PRESETS = {
+      tcxo: { wfm: 0.8, ffm: 0.5, rwfm: 0.05, aging: 0.004 },
+      ocxo: { wfm: 0.15, ffm: 0.08, rwfm: 0.008, aging: 0.0004 },
+      rb: { wfm: 0.05, ffm: 0.02, rwfm: 0.001, aging: 0.00004 },
+    };
+
+    function fmt(v, places) {
+      if (v === null || v === undefined) return "—";
+      var t = Math.abs(v).toFixed(places === undefined ? 2 : places);
+      return (v < 0 ? "−" : "+") + t;
     }
 
-    /** Box-Muller: the postman's delay is zero-mean and white, as promised. */
     function gaussian() {
-      var u = 0;
-      var v = 0;
+      var u = 0, v = 0;
       while (u === 0) u = Math.random();
       while (v === 0) v = Math.random();
       return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
     }
 
+    /** Overlapping Allan deviation from a phase record in nanoseconds. */
+    function adev(phase) {
+      var out = [];
+      var n = phase.length;
+      for (var t = 0; t < TAUS.length; t++) {
+        var m = TAUS[t];
+        if (n < 3 * m) continue;
+        var sum = 0, count = 0;
+        for (var i = 0; i < n - 2 * m; i++) {
+          var d = (phase[i + 2 * m] - 2 * phase[i + m] + phase[i]) * 1e-9;
+          sum += d * d;
+          count++;
+        }
+        if (count) out.push([m, Math.sqrt(sum / (2 * count * m * m))]);
+      }
+      return out;
+    }
+
     function setup(root) {
       var canvas = root.querySelector('[data-role="canvas"]');
-      if (!canvas) return;
+      var adevCanvas = root.querySelector('[data-role="adev"]');
+      if (!canvas || !adevCanvas) return;
 
-      function out(name) {
-        return root.querySelector('[data-out="' + name + '"]');
-      }
-      function control(name) {
-        return root.querySelector('[data-control="' + name + '"]');
-      }
+      function out(name) { return root.querySelector('[data-out="' + name + '"]'); }
+      function control(name) { return root.querySelector('[data-control="' + name + '"]'); }
       function value(name, fallback) {
         var el = control(name);
         return el ? Number(el.value) : fallback;
@@ -203,77 +266,99 @@ const STAGES = [
 
       var rows = root.querySelectorAll(".chain__row");
       var slots = root.querySelectorAll("[data-values]");
+      var plains = root.querySelectorAll("[data-plain]");
 
+      var preset = PRESETS.tcxo;
       var state = null;
       var running = false;
       var cut = false;
       var lastDone = -1;
+      var curves = { disc: [], free: [], ref: [] };
+
+      function gains() {
+        var tau = value("tau", 10);
+        return { kp: 2 / tau, ki: 1 / (tau * tau), tau: tau };
+      }
 
       function reset() {
         state = {
-          phase: 0,
-          free: 0,
-          tally: 0,
-          rate: value("rate", 8),
-          pulse: 0,
-          stage: 0,
-          pending: { noise: null, error: null, p: null, y: null },
-          tracePhase: [],
-          traceFree: [],
-          traceTally: [],
-          traceTruth: [],
+          phase: 0, free: 0, tally: 0, rw: 0, age: 0,
+          rate: value("rate", 8), pulse: 0, stage: 0,
+          flick: [0, 0, 0, 0],
+          pending: { noise: null, error: null, p: null, y: null, rate: null },
+          tracePhase: [], traceFree: [], traceTally: [], traceTruth: [],
+          statDisc: [], statFree: [], statRef: [],
         };
         lastDone = -1;
         cut = false;
-        var button = root.querySelector('[data-action="cut"]');
-        if (button) button.textContent = "Cut reference";
+        curves = { disc: [], free: [], ref: [] };
+        var b = root.querySelector('[data-action="cut"]');
+        if (b) b.textContent = "Cut reference";
         root.removeAttribute("data-cut");
         render();
       }
 
-      /** One stage of the loop. */
+      var FLICKER_A = [
+        Math.exp(-1 / 1), Math.exp(-1 / 10),
+        Math.exp(-1 / 100), Math.exp(-1 / 1000),
+      ];
+
+      /** The oscillator's own noise for this update, shared by both clocks. */
+      function oscillatorRate() {
+        var flicker = 0;
+        for (var k = 0; k < 4; k++) {
+          var a = FLICKER_A[k];
+          state.flick[k] = a * state.flick[k] + Math.sqrt(1 - a * a) * gaussian();
+          flicker += state.flick[k];
+        }
+        flicker *= preset.ffm / 2;
+        state.rw += preset.rwfm * gaussian();
+        state.age += preset.aging;
+        return (
+          value("rate", 8) + state.rw + state.age + flicker + preset.wfm * gaussian()
+        );
+      }
+
       function advance() {
-        var kp = value("kp", 0.2);
-        var ki = value("ki", 0.01);
-        var sigma = value("jitter", 10);
-        var aging = value("aging", 0);
+        var g = gains();
+        var sigma = value("jitter", 15);
         var p = state.pending;
 
         switch (state.stage) {
           case 0:
-            if (cut) {
-              p.noise = null;
-              p.error = null;
-            } else {
-              p.noise = gaussian() * sigma;
-              p.error = state.phase + p.noise;
-            }
+            if (cut) { p.noise = null; p.error = null; }
+            else { p.noise = gaussian() * sigma; p.error = state.phase + p.noise; }
             break;
           case 1:
-            p.p = cut ? 0 : -kp * p.error;
+            p.p = cut ? 0 : -g.kp * p.error;
             break;
           case 2:
-            if (!cut) state.tally -= ki * p.error;
+            if (!cut) state.tally -= g.ki * p.error;
             break;
           case 3:
             p.y = p.p + state.tally;
             break;
           case 4:
-            state.phase += state.rate + p.y;
-            state.free += state.rate;
-            state.rate += aging;
+            p.rate = oscillatorRate();
+            state.rate = p.rate;
+            state.phase += p.rate + p.y;
+            state.free += p.rate;
             state.pulse += 1;
+
             state.tracePhase.push(state.phase);
             state.traceFree.push(state.free);
             state.traceTally.push(state.tally);
-            state.traceTruth.push(-state.rate);
-            [
-              state.tracePhase,
-              state.traceFree,
-              state.traceTally,
-              state.traceTruth,
-            ].forEach(function (trace) {
-              if (trace.length > HISTORY) trace.splice(0, trace.length - HISTORY);
+            state.traceTruth.push(-p.rate);
+            state.statDisc.push(state.phase);
+            state.statFree.push(state.free);
+            state.statRef.push(p.noise === null ? 0 : p.noise);
+
+            [state.tracePhase, state.traceFree, state.traceTally, state.traceTruth]
+              .forEach(function (t) {
+                if (t.length > HISTORY) t.splice(0, t.length - HISTORY);
+              });
+            [state.statDisc, state.statFree, state.statRef].forEach(function (t) {
+              if (t.length > STATS) t.splice(0, t.length - STATS);
             });
             break;
         }
@@ -284,77 +369,82 @@ const STAGES = [
 
       function finishUpdate() {
         var guard = 0;
-        do {
-          advance();
-          guard++;
-        } while (state.stage !== 0 && guard < 10);
+        do { advance(); guard++; } while (state.stage !== 0 && guard < 10);
       }
 
-      function substitution(index) {
-        var kp = value("kp", 0.2);
-        var ki = value("ki", 0.01);
+      // --- narration --------------------------------------------------------
+      function plainWords(index) {
+        var g = gains();
         var p = state.pending;
 
         switch (index) {
           case 0:
-            if (cut && lastDone >= 0) return "reference lost · no measurement";
-            if (p.error === null) return "";
+            if (cut) return "The postman is not coming. Nothing is measured this update.";
+            if (p.error === null)
+              return "A postcard arrives. What you read is the clock's true error plus the postman's random delay.";
             return (
-              "ε = " +
-              fmt(state.phase, 1) +
-              " + " +
-              fmt(p.noise, 1) +
-              " = " +
-              fmt(p.error, 1) +
-              " ns"
+              "The clock is " + fmt(state.phase, 1) + " ns off true time, the postman was " +
+              fmt(p.noise, 1) + " ns out, so the postcard appears to read " +
+              fmt(p.error, 1) + " ns."
             );
           case 1:
-            if (p.p === null) return "";
-            if (cut) return "no postcard · p = 0 ns/update";
+            if (cut) return "With no postcard there is nothing to react to, so today's nudge is zero.";
+            if (p.p === null) return "React to the discrepancy, but only by a small fraction of it.";
             return (
-              "p = −" +
-              kp.toFixed(2) +
-              " × (" +
-              fmt(p.error, 1) +
-              " ns) = " +
-              fmt(p.p, 2) +
-              " ns/update"
+              "React to only " + (g.kp * 100).toFixed(1) + "% of that, trimming the rate by " +
+              fmt(p.p, 2) + " ns per update. A freak postman barely moves the clock."
             );
           case 2:
-            if (cut) return "tally held at " + fmt(state.tally, 2) + " ns/update";
-            if (p.error === null) return "";
+            if (cut) return "The logbook is not updated, but it is not forgotten either. It is what you now coast on.";
+            if (p.error === null) return "Add a much smaller slice of the same discrepancy to the running tally.";
             return (
-              "I = " +
-              fmt(state.tally, 2) +
-              " ns/update   (moved by " +
-              fmt(-ki * p.error, 3) +
-              ")"
+              "Add a smaller slice to the logbook. The loop now believes the crystal gains " +
+              fmt(state.tally, 2) + " ns per update, and the truth is " + fmt(-state.rate, 2) + "."
             );
           case 3:
-            if (p.y === null) return "";
+            if (p.y === null) return "The lever position is today's nudge plus everything ever learned.";
             return (
-              "y = " +
-              fmt(p.p, 2) +
-              " + " +
-              fmt(state.tally, 2) +
-              " = " +
-              fmt(p.y, 2) +
-              " ns/update"
+              "Set the lever to " + fmt(p.y, 2) + " ns per update: today's nudge " +
+              fmt(p.p, 2) + " plus the logbook's " + fmt(state.tally, 2) + "."
             );
           case 4:
-            if (!state.pulse) return "";
+            if (!state.pulse) return "Free-run on the corrected rate until the next postcard.";
             return (
-              "φ = " +
-              fmt(state.phase, 1) +
-              " ns   ·   free-running would be " +
-              fmt(state.free, 1) +
-              " ns"
+              "One postcard later the clock is " + fmt(state.phase, 1) +
+              " ns off. Had you never corrected it, it would be " + fmt(state.free, 1) + " ns off."
             );
         }
         return "";
       }
 
+      function substitution(index) {
+        var g = gains();
+        var p = state.pending;
+        switch (index) {
+          case 0:
+            if (cut && lastDone >= 0) return "reference lost · no measurement";
+            if (p.error === null) return "";
+            return "ε = " + fmt(state.phase, 1) + " + " + fmt(p.noise, 1) + " = " + fmt(p.error, 1) + " ns";
+          case 1:
+            if (p.p === null) return "";
+            if (cut) return "p = 0 ns/update";
+            return "p = −" + g.kp.toFixed(3) + " × (" + fmt(p.error, 1) + " ns) = " + fmt(p.p, 2) + " ns/update";
+          case 2:
+            if (cut) return "I held at " + fmt(state.tally, 2) + " ns/update";
+            if (p.error === null) return "";
+            return "I = " + fmt(state.tally, 2) + " ns/update  (moved by " + fmt(-g.ki * p.error, 4) + ")";
+          case 3:
+            if (p.y === null) return "";
+            return "y = " + fmt(p.p, 2) + " + " + fmt(state.tally, 2) + " = " + fmt(p.y, 2) + " ns/update";
+          case 4:
+            if (!state.pulse) return "";
+            return "φ = " + fmt(state.phase, 1) + " ns   ·   free-running " + fmt(state.free, 1) + " ns";
+        }
+        return "";
+      }
+
       function render() {
+        var g = gains();
         for (var i = 0; i < rows.length; i++) {
           var name = "idle";
           if (running) name = "done";
@@ -364,28 +454,22 @@ const STAGES = [
           if (!running && i === lastDone) rows[i].setAttribute("data-just", "true");
           else rows[i].removeAttribute("data-just");
         }
-
         for (var j = 0; j < slots.length; j++) {
           slots[j].textContent = substitution(j) || " ";
+          if (plains[j]) plains[j].textContent = plainWords(j) || " ";
         }
-
-        write(
-          "just",
-          lastDone < 0 ? "nothing yet" : lastDone + 1 + ". " + STAGE_NAMES[lastDone]
-        );
+        write("just", lastDone < 0 ? "nothing yet" : lastDone + 1 + ". " + STAGE_NAMES[lastDone]);
         write("next", state.stage + 1 + ". " + STAGE_NAMES[state.stage]);
         write("pulse", String(state.pulse));
         write("phase", fmt(state.phase, 1));
         write("tally", fmt(state.tally, 2));
         write("rate", fmt(state.rate, 2));
-        write("residual", fmt(state.tally + state.rate, 2));
+        write("gains", g.kp.toFixed(3) + ", " + g.ki.toFixed(4));
       }
 
       function theme() {
-        var style = getComputedStyle(root);
-        function read(name, fallback) {
-          return style.getPropertyValue(name).trim() || fallback;
-        }
+        var s = getComputedStyle(root);
+        function read(n, f) { return s.getPropertyValue(n).trim() || f; }
         return {
           text: read("--text", "#1a1a17"),
           muted: read("--text-faint", "#92908a"),
@@ -394,7 +478,7 @@ const STAGES = [
         };
       }
 
-      function plot(ctx, series, colour, x0, y0, w, h, lo, hi, dashed) {
+      function line(ctx, series, colour, x0, y0, w, h, lo, hi, dashed) {
         if (series.length < 2) return;
         var step = w / (HISTORY - 1);
         var span = hi - lo || 1;
@@ -402,91 +486,152 @@ const STAGES = [
         ctx.lineWidth = dashed ? 1.2 : 1.75;
         ctx.setLineDash(dashed ? [4, 4] : []);
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(x0, y0, w, h);
-        ctx.clip();
+        ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.clip();
         ctx.beginPath();
         for (var i = 0; i < series.length; i++) {
           var x = x0 + i * step;
           var y = y0 + h - ((series[i] - lo) / span) * h;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
-        ctx.stroke();
-        ctx.restore();
-        ctx.setLineDash([]);
+        ctx.stroke(); ctx.restore(); ctx.setLineDash([]);
       }
 
-      function label(ctx, text, x, y, colour) {
+      function text(ctx, s, x, y, colour, weight) {
         ctx.fillStyle = colour;
-        ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillText(text, x, y);
+        ctx.font = (weight || "") + " 10px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillText(s, x, y);
       }
 
-      var lastPaint = 0;
+      function fit(canvasEl) {
+        var ratio = Math.min(window.devicePixelRatio || 1, 2);
+        var w = canvasEl.clientWidth, h = canvasEl.clientHeight;
+        if (canvasEl.width !== w * ratio || canvasEl.height !== h * ratio) {
+          canvasEl.width = w * ratio;
+          canvasEl.height = h * ratio;
+        }
+        var ctx = canvasEl.getContext("2d");
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        return { ctx: ctx, w: w, h: h };
+      }
+
+      function drawAdev() {
+        var f = fit(adevCanvas);
+        var ctx = f.ctx, w = f.w, h = f.h;
+        var c = theme();
+        var padL = 46, padR = 12, padT = 16, padB = 24;
+        var pw = w - padL - padR, ph = h - padT - padB;
+
+        var all = curves.disc.concat(curves.free, curves.ref);
+        if (all.length < 3) {
+          text(ctx, "collecting samples for the Allan deviation…", padL, padT + 14, c.muted);
+          return;
+        }
+
+        var lo = Infinity, hi = -Infinity;
+        for (var i = 0; i < all.length; i++) {
+          if (all[i][1] > 0) { lo = Math.min(lo, all[i][1]); hi = Math.max(hi, all[i][1]); }
+        }
+        lo = Math.pow(10, Math.floor(Math.log10(lo)));
+        hi = Math.pow(10, Math.ceil(Math.log10(hi)));
+
+        var maxTau = TAUS[TAUS.length - 1];
+        function px(m) { return padL + (Math.log10(m) / Math.log10(maxTau)) * pw; }
+        function py(v) {
+          return padT + ph - ((Math.log10(v) - Math.log10(lo)) / (Math.log10(hi) - Math.log10(lo))) * ph;
+        }
+
+        // decade grid
+        ctx.strokeStyle = c.rule; ctx.lineWidth = 1;
+        for (var d = lo; d <= hi; d *= 10) {
+          ctx.beginPath(); ctx.moveTo(padL, py(d)); ctx.lineTo(padL + pw, py(d)); ctx.stroke();
+          text(ctx, "1e" + Math.round(Math.log10(d)), 4, py(d) + 3, c.muted);
+        }
+        for (var t = 0; t < TAUS.length; t++) {
+          text(ctx, String(TAUS[t]), px(TAUS[t]) - 5, h - 8, c.muted);
+        }
+
+        function curve(series, colour, dashed) {
+          if (series.length < 2) return;
+          ctx.strokeStyle = colour; ctx.lineWidth = dashed ? 1.2 : 2;
+          ctx.setLineDash(dashed ? [4, 3] : []);
+          ctx.beginPath();
+          for (var i = 0; i < series.length; i++) {
+            var x = px(series[i][0]), y = py(series[i][1]);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        curve(curves.ref, c.muted, true);
+        curve(curves.free, c.text, true);
+        curve(curves.disc, c.accent, false);
+
+        // the chosen time constant
+        var tau = gains().tau;
+        if (tau >= 1 && tau <= maxTau) {
+          ctx.strokeStyle = c.accent; ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(px(tau), padT); ctx.lineTo(px(tau), padT + ph); ctx.stroke();
+          ctx.setLineDash([]);
+          text(ctx, "τ", px(tau) - 3, padT - 4, c.accent, "600");
+        }
+
+        // the disciplined minimum
+        var best = null;
+        for (var b = 0; b < curves.disc.length; b++) {
+          if (!best || curves.disc[b][1] < best[1]) best = curves.disc[b];
+        }
+        if (best) {
+          ctx.fillStyle = c.accent;
+          ctx.beginPath(); ctx.arc(px(best[0]), py(best[1]), 3.2, 0, Math.PI * 2); ctx.fill();
+          text(ctx, "min " + best[1].toExponential(1) + " at τ=" + best[0],
+               px(best[0]) + 7, py(best[1]) - 5, c.accent, "600");
+        }
+
+        text(ctx, "Allan deviation σ_y(τ)   ·   disciplined (solid), free-running and reference (dashed)",
+             padL, 11, c.muted);
+        text(ctx, "averaging interval τ  [updates]", padL + pw - 150, h - 8, c.muted);
+      }
+
+      var lastPaint = 0, lastStats = 0;
 
       function draw(time) {
         if (running) {
-          var n = value("speed", 2);
+          var n = value("speed", 8);
           for (var i = 0; i < n; i++) finishUpdate();
         }
 
+        var f = fit(canvas);
+        var ctx = f.ctx, width = f.w, height = f.h;
         var c = theme();
-        var ratio = Math.min(window.devicePixelRatio || 1, 2);
-        var width = canvas.clientWidth;
-        var height = canvas.clientHeight;
-        if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
-          canvas.width = width * ratio;
-          canvas.height = height * ratio;
-        }
-
-        var ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        ctx.clearRect(0, 0, width, height);
 
         var gap = 22;
         var topH = (height - gap) * 0.56;
-        var botY = topH + gap;
-        var botH = height - botY;
+        var botY = topH + gap, botH = height - botY;
 
-        // --- upper panel: phase error, disciplined against free-running -----
         var peak = 30;
         for (var a = 0; a < state.tracePhase.length; a++) {
           peak = Math.max(peak, Math.abs(state.tracePhase[a]));
         }
         peak *= 1.35;
 
-        ctx.strokeStyle = c.rule;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, topH / 2);
-        ctx.lineTo(width, topH / 2);
-        ctx.stroke();
+        ctx.strokeStyle = c.rule; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, topH / 2); ctx.lineTo(width, topH / 2); ctx.stroke();
 
-        plot(ctx, state.traceFree, c.muted, 0, 0, width, topH, -peak, peak, true);
-        plot(ctx, state.tracePhase, c.accent, 0, 0, width, topH, -peak, peak, false);
+        line(ctx, state.traceFree, c.muted, 0, 0, width, topH, -peak, peak, true);
+        line(ctx, state.tracePhase, c.accent, 0, 0, width, topH, -peak, peak, false);
 
-        label(ctx, "phase error φ  [ns]", 4, 12, c.muted);
-        label(ctx, "free-running (dashed)", 4, 24, c.muted);
-        label(ctx, "±" + peak.toFixed(0) + " ns", width - 52, 12, c.muted);
+        text(ctx, "phase error φ  [ns]", 4, 12, c.muted);
+        text(ctx, "free-running (dashed)", 4, 24, c.muted);
+        text(ctx, "±" + peak.toFixed(0) + " ns", width - 52, 12, c.muted);
 
-        // --- lower panel: the tally converging on minus the true rate -------
         var lo = -Math.max(4, Math.abs(state.rate) * 2.2);
         var hi = Math.max(4, Math.abs(state.rate) * 2.2);
-
         ctx.strokeStyle = c.rule;
-        ctx.beginPath();
-        ctx.moveTo(0, botY);
-        ctx.lineTo(width, botY);
-        ctx.stroke();
-
-        plot(ctx, state.traceTruth, c.text, 0, botY, width, botH, lo, hi, true);
-        plot(ctx, state.traceTally, c.accent, 0, botY, width, botH, lo, hi, false);
-
-        label(ctx, "tally I  vs  −r (dashed)   [ns/update]", 4, botY + 12, c.muted);
-        label(ctx, hi.toFixed(1), width - 26, botY + 12, c.muted);
-        label(ctx, lo.toFixed(1), width - 26, botY + botH - 4, c.muted);
+        ctx.beginPath(); ctx.moveTo(0, botY); ctx.lineTo(width, botY); ctx.stroke();
+        line(ctx, state.traceTruth, c.text, 0, botY, width, botH, lo, hi, true);
+        line(ctx, state.traceTally, c.accent, 0, botY, width, botH, lo, hi, false);
+        text(ctx, "tally I  vs  −r (dashed)   [ns/update]", 4, botY + 12, c.muted);
 
         if (cut) {
           ctx.fillStyle = c.accent;
@@ -494,45 +639,46 @@ const STAGES = [
           ctx.fillText("HOLDOVER · reference cut", width - 152, botY + 12);
         }
 
-        if (running && time - lastPaint > 120) {
-          lastPaint = time;
-          render();
+        if (time - lastStats > 700 && state.statDisc.length > 64) {
+          lastStats = time;
+          curves.disc = adev(state.statDisc);
+          curves.free = adev(state.statFree);
+          curves.ref = adev(state.statRef);
         }
+        drawAdev();
 
+        if (running && time - lastPaint > 140) { lastPaint = time; render(); }
         requestAnimationFrame(draw);
       }
 
-      // --- controls -------------------------------------------------------
-      var mirrors = [
-        ["jitter", "jitter-value", 1],
-        ["rate", "rate-value", 1],
-        ["kp", "kp-value", 2],
-        ["ki", "ki-value", 3],
-        ["aging", "aging-value", 3],
-        ["speed", "speed-value", 0],
-      ];
-      mirrors.forEach(function (entry) {
-        var slider = control(entry[0]);
+      // --- controls ---------------------------------------------------------
+      [["jitter", "jitter-value", 1], ["rate", "rate-value", 1],
+       ["tau", "tau-value", 0], ["speed", "speed-value", 0]].forEach(function (e) {
+        var slider = control(e[0]);
         if (!slider) return;
         slider.addEventListener("input", function () {
-          var el = out(entry[1]);
-          if (el) el.textContent = Number(slider.value).toFixed(entry[2]);
-          if (entry[0] === "rate") state.rate = Number(slider.value);
+          var el = out(e[1]);
+          if (el) el.textContent = Number(slider.value).toFixed(e[2]);
           if (!running) render();
         });
       });
 
+      var presetButtons = root.querySelectorAll("[data-preset]");
+      Array.prototype.forEach.call(presetButtons, function (button) {
+        button.addEventListener("click", function () {
+          preset = PRESETS[button.getAttribute("data-preset")];
+          Array.prototype.forEach.call(presetButtons, function (o) {
+            o.removeAttribute("data-active");
+          });
+          button.setAttribute("data-active", "true");
+        });
+      });
+
       root.querySelector('[data-action="stage"]').addEventListener("click", function () {
-        if (!running) {
-          advance();
-          render();
-        }
+        if (!running) { advance(); render(); }
       });
       root.querySelector('[data-action="tick"]').addEventListener("click", function () {
-        if (!running) {
-          finishUpdate();
-          render();
-        }
+        if (!running) { finishUpdate(); render(); }
       });
 
       var toggle = root.querySelector('[data-action="toggle"]');

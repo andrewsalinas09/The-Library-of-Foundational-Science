@@ -21,6 +21,17 @@ import katex from "katex";
 const tex = (source: string) =>
   katex.renderToString(source, { throwOnError: false, output: "html" });
 
+const KEY = [
+  ["x", "input", "the smooth voltage being measured", "the fish, whose weight you want", "FS"],
+  ["b", "bucket", "the capacitor's charge level: the running total of everything that flowed in", "which pan is winning, and by how much", "FS"],
+  ["d", "the bit", "the comparator's entire answer, one bit", "which way the scale tipped", "0 or 1"],
+  ["f", "feedback", "a full-scale push sent back into the bucket, one of exactly two values", "the standard weight you add or remove", "±1 FS"],
+  ["e", "difference", "input minus feedback: what actually flows into the bucket this tick", "the imbalance left on the scale", "FS"],
+  ["k", "loop gain", "what fraction of the difference reaches the bucket each tick", "how heavy one standard weight is", "dimensionless"],
+  ["W", "window", "how many bits the average is taken over", "how many moves you tally up", "samples"],
+  ["x̂", "estimate", "the value recovered from the density of ones", "the fish's weight, read off the ledger", "FS"],
+];
+
 const STAGES = [
   {
     name: "Compare",
@@ -61,6 +72,34 @@ const STAGES = [
     </div>
   </div>
 
+  <details class="key" open>
+    <summary>What every symbol means</summary>
+    <div class="table-wrap">
+      <table class="key__table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Name</th>
+            <th>In plain words</th>
+            <th>On the balance scale</th>
+            <th>Unit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {KEY.map((row) => (
+            <tr>
+              <td class="key__symbol">{row[0]}</td>
+              <td>{row[1]}</td>
+              <td>{row[2]}</td>
+              <td class="key__story">{row[3]}</td>
+              <td class="key__unit">{row[4]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </details>
+
   <canvas class="demo__canvas" data-role="canvas"></canvas>
 
   <div class="demo__readouts">
@@ -82,7 +121,7 @@ const STAGES = [
           <span class="chain__index">{index + 1}</span>
           <div class="chain__body">
             <p class="chain__name">{stage.name}</p>
-            <p class="chain__blurb">{stage.blurb}</p>
+            <p class="chain__plain" data-plain={index}>{stage.blurb}</p>
           </div>
           <div class="chain__maths">
             <span class="chain__equation" set:html={stage.equation} />
@@ -172,6 +211,7 @@ const STAGES = [
 
       var rows = root.querySelectorAll(".chain__row");
       var valueSlots = root.querySelectorAll("[data-values]");
+      var plainSlots = root.querySelectorAll("[data-plain]");
 
       var state = {
         bucket: 0,
@@ -308,6 +348,54 @@ const STAGES = [
         return "";
       }
 
+      /** The same step, said in words, with this tick's numbers in it. */
+      function plainWords(index) {
+        var x = value("input", 0.6);
+        var k = value("gain", 0.25);
+        var p = state.pending;
+
+        switch (index) {
+          case 0:
+            if (p.bit === null)
+              return "Ask the only question the comparator can answer: is the bucket above zero?";
+            return (
+              "The bucket holds " + fmt(state.bucket) + " FS, which is " +
+              (state.bucket > 0 ? "above" : "at or below") +
+              " zero, so the answer is " + p.bit + "."
+            );
+          case 1:
+            if (p.feedback === null)
+              return "Turn that single bit into a push back into the bucket.";
+            return (
+              "A " + p.bit + " means push " + (p.feedback > 0 ? "+1" : "−1") +
+              " FS back in. There are only two possible pushes, which is why no ladder can be mis-spaced."
+            );
+          case 2:
+            if (p.error === null)
+              return "Subtract the push from the input. The remainder is what actually flows in.";
+            return (
+              "The input is " + fmt(x) + " but the push was " + (p.feedback > 0 ? "+1" : "−1") +
+              ", so " + fmt(p.error) + " FS of imbalance flows into the bucket."
+            );
+          case 3:
+            if (p.nextBucket === null)
+              return "The bucket accumulates a fraction of that imbalance.";
+            return (
+              "A fraction k = " + k.toFixed(2) + " of it lands in the bucket, taking it from " +
+              fmt(state.bucket) + " to " + fmt(p.nextBucket) + " FS. The bucket never settles, and that is the point."
+            );
+          case 4:
+            if (!state.bits.length)
+              return "The bit joins the record. Density over a window is the measurement.";
+            return (
+              "Bit " + state.bits[state.bits.length - 1] + " joins the record. Over the last " +
+              windowSize + " bits the density gives " + fmt(state.estimate) +
+              " FS, against a true input of " + fmt(x) + " FS."
+            );
+        }
+        return "";
+      }
+
       function renderChain() {
         for (var i = 0; i < rows.length; i++) {
           var row = rows[i];
@@ -323,6 +411,7 @@ const STAGES = [
         for (var j = 0; j < valueSlots.length; j++) {
           var text = substitution(j);
           valueSlots[j].textContent = text || " ";
+          if (plainSlots[j]) plainSlots[j].textContent = plainWords(j) || " ";
         }
 
         write(
